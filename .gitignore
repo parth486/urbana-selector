@@ -1,0 +1,11 @@
+# Ignore the IGNORE folder
+IGNORE/
+
+# Project Folders
+
+
+# VS Code
+.vscode/
+
+# Common WordPress ignores
+node_modules

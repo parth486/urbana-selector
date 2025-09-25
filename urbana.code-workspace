@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "urbana",
+			"path": "."
+		},
+		{
+			"name": "spider-orders-hub",
+			"path": "../../../../../../elementor/app/public/wp-content/plugins/spider-orders-hub"
+		}
+	],
+	"settings": {}
+}

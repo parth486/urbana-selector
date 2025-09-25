@@ -78,14 +78,14 @@ class AdminInit {
 			return;
 		}
 
-		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/js/';
+		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
 
 		// Data Builder App
 		if ( $hook === 'urbana-selector_page_urbana-data-builder' ) {
 			if ( file_exists( $asset_file . 'data-builder-app.js' ) ) {
 				wp_enqueue_script(
 					'urbana-data-builder',
-					URBANA_PLUGIN_URL . 'assets/dist/js/data-builder-app.js',
+					URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.js',
 					array(),
 					URBANA_VERSION,
 					true

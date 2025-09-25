@@ -29,7 +29,7 @@
 }
 
 .json-preview {
-  @apply bg-code rounded-lg p-4 text-sm overflow-auto;
+  @apply rounded-lg p-4 text-sm overflow-auto;
 }
 
 .json-preview pre {

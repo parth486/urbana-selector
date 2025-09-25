@@ -6,7 +6,6 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: "assets/dist",
-    cssCodeSplit: false,
     rollupOptions: {
       input: {
         "stepper-app": "./src/stepper-app/main.tsx",
@@ -14,16 +13,12 @@ export default defineConfig({
         "admin-orders-app": "./src/admin-orders-app/main.tsx",
       },
       output: {
-        format: "es",
-        entryFileNames: "js/[name].js",
-        assetFileNames: "assets/[name].[ext]",
-        inlineDynamicImports: false,
+        entryFileNames: "[name].js",
+        chunkFileNames: "[name].js",
+        assetFileNames: "[name].[ext]",
       },
     },
-
-    chunkSizeWarningLimit: 10000, // Increase limit to avoid warnings for large bundles
-
-    assetsDir: "", // This prevents the 'assets' subfolder
+    cssCodeSplit: true,
   },
   resolve: {
     alias: {

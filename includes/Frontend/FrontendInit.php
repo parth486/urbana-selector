@@ -29,6 +29,19 @@ class FrontendInit {
 				true
 			);
 
+			// Add module type attribute
+			add_filter(
+				'script_loader_tag',
+				function ( $tag, $handle ) {
+					if ( 'urbana-stepper-app' === $handle ) {
+						return str_replace( '<script', '<script type="module"', $tag );
+					}
+					return $tag;
+				},
+				10,
+				2
+			);
+
 			wp_enqueue_style(
 				'urbana-stepper-app',
 				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.css',

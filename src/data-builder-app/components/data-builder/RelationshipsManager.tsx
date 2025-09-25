@@ -1,526 +1,638 @@
 import React from "react";
-import { Card, CardBody, CardHeader, Button } from "@heroui/react";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Badge,
+  Tabs,
+  Tab,
+  Chip,
+  Divider,
+  Select,
+  SelectItem,
+  Accordion,
+  AccordionItem,
+  Avatar,
+  Progress,
+  Spinner,
+} from "@heroui/react";
 import { Icon } from "@iconify/react";
-import { 
-  DndContext, 
-  closestCenter, 
-  KeyboardSensor, 
-  PointerSensor, 
-  useSensor, 
-  useSensors,
-  DragEndEvent 
-} from '@dnd-kit/core';
-import { 
-  SortableContext, 
-  sortableKeyboardCoordinates, 
-  useSortable, 
-  verticalListSortingStrategy 
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
 
-interface ProductGroup {
+interface RelationshipTreeNode {
   id: string;
   name: string;
-  icon: string;
-  description: string;
+  type: "group" | "range" | "product";
+  code?: string;
+  overview?: string;
+  description?: string;
+  children?: RelationshipTreeNode[];
+  hasIssues?: boolean;
 }
 
-interface ProductRange {
-  id: string;
-  name: string;
-  image: string;
-  description: string;
-  tags: string[];
-}
+export const RelationshipsManager: React.FC = () => {
+  const {
+    productGroups,
+    productRanges,
+    products,
+    relationships,
+    linkRangeToGroup,
+    unlinkRangeFromGroup,
+    linkProductToRange,
+    unlinkProductFromRange,
+  } = useDataBuilderStore();
 
-interface Product {
-  id: string;
-  code: string;
-  name: string;
-  overview: string;
-  description: string;
-  specifications: string[];
-  imageGallery: string[];
-  files: Record<string, string>;
-}
-
-interface Relationships {
-  groupToRanges: Record<string, string[]>;
-  rangeToProducts: Record<string, string[]>;
-}
-
-interface RelationshipsManagerProps {
-  groups: ProductGroup[];
-  ranges: ProductRange[];
-  products: Product[];
-  relationships: Relationships;
-  onRelationshipsChange: (relationships: Relationships) => void;
-}
-
-interface DraggableItemProps {
-  id: string;
-  children: React.ReactNode;
-}
-
-const DraggableItem: React.FC<DraggableItemProps> = React.memo(({ id, children }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
-  
-  const style = transform ? {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  } : undefined;
-  
-  return (
-    <div 
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="p-3 bg-content1 rounded-medium border border-default-200 mb-2 flex items-center justify-between cursor-move hover:border-primary transition-colors"
-    >
-      {children}
-    </div>
-  );
-});
-
-export const RelationshipsManager: React.FC<RelationshipsManagerProps> = ({
-  groups,
-  ranges,
-  products,
-  relationships,
-  onRelationshipsChange
-}) => {
   const [selectedGroup, setSelectedGroup] = React.useState<string | null>(null);
   const [selectedRange, setSelectedRange] = React.useState<string | null>(null);
-  
-  // Fix sensor configuration to make drag and drop more reliable
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      // Remove activation constraints that might be causing issues
-      activationConstraint: {
-        distance: 8, // Minimum distance to start dragging (pixels)
-      }
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const [isAnalyzing, setIsAnalyzing] = React.useState(false);
 
-  // Select first group and range by default if available
-  React.useEffect(() => {
-    if (groups.length > 0 && !selectedGroup) {
-      setSelectedGroup(groups[0].id);
-    }
-  }, [groups, selectedGroup]);
+  // Build relationship tree
+  const buildRelationshipTree = (): RelationshipTreeNode[] => {
+    return productGroups.map((group) => {
+      const groupRanges = relationships.groupToRanges[group.id] || [];
+      const rangeNodes: RelationshipTreeNode[] = groupRanges
+        .map((rangeId) => {
+          const range = productRanges.find((r) => r.id === rangeId);
+          const rangeProducts = relationships.rangeToProducts[rangeId] || [];
+          const productNodes: RelationshipTreeNode[] = rangeProducts
+            .map((productId) => {
+              const product = products.find((p) => p.id === productId);
+              return {
+                id: productId,
+                name: product?.name || "Unknown Product",
+                code: product?.code,
+                overview: product?.overview,
+                type: "product" as const,
+                hasIssues: !product,
+              };
+            })
+            .filter(Boolean);
 
-  React.useEffect(() => {
-    if (selectedGroup) {
-      const associatedRanges = relationships.groupToRanges[selectedGroup] || [];
-      if (associatedRanges.length > 0 && !selectedRange) {
-        setSelectedRange(associatedRanges[0]);
-      } else if (associatedRanges.length === 0) {
-        setSelectedRange(null);
-      }
-    }
-  }, [selectedGroup, relationships.groupToRanges, selectedRange]);
+          return {
+            id: rangeId,
+            name: range?.name || "Unknown Range",
+            description: range?.description,
+            type: "range" as const,
+            children: productNodes,
+            hasIssues: !range || rangeProducts.length === 0,
+          };
+        })
+        .filter(Boolean);
 
-  // Stabilize handlers with useCallback
-  const handleGroupSelect = React.useCallback((groupId: string) => {
-    setSelectedGroup(groupId);
-    setSelectedRange(null);
-  }, []);
+      return {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        type: "group" as const,
+        children: rangeNodes,
+        hasIssues: groupRanges.length === 0,
+      };
+    });
+  };
 
-  const handleRangeSelect = React.useCallback((rangeId: string) => {
-    setSelectedRange(rangeId);
-  }, []);
+  // Get orphaned items (not linked to anything)
+  const getOrphanedItems = () => {
+    const orphanedRanges = productRanges.filter(
+      (range) => !Object.values(relationships.groupToRanges).some((ranges) => ranges.includes(range.id))
+    );
 
-  const handleAddRangeToGroup = React.useCallback((rangeId: string) => {
-    if (!selectedGroup) return;
-    
-    const currentRanges = relationships.groupToRanges[selectedGroup] || [];
-    
-    // Don't add if already in the list
-    if (currentRanges.includes(rangeId)) return;
-    
-    const newRelationships = {
-      ...relationships,
-      groupToRanges: {
-        ...relationships.groupToRanges,
-        [selectedGroup]: [...currentRanges, rangeId]
-      }
+    const orphanedProducts = products.filter(
+      (product) => !Object.values(relationships.rangeToProducts).some((products) => products.includes(product.id))
+    );
+
+    return { orphanedRanges, orphanedProducts };
+  };
+
+  // Get relationship statistics
+  const getRelationshipStats = () => {
+    const { orphanedRanges, orphanedProducts } = getOrphanedItems();
+    const totalConnections =
+      Object.values(relationships.groupToRanges).reduce((sum, ranges) => sum + ranges.length, 0) +
+      Object.values(relationships.rangeToProducts).reduce((sum, products) => sum + products.length, 0);
+
+    const completionRate = Math.round(
+      ((productGroups.length -
+        productGroups.filter((g) => (relationships.groupToRanges[g.id] || []).length === 0).length +
+        (productRanges.length - orphanedRanges.length) +
+        (products.length - orphanedProducts.length)) /
+        (productGroups.length + productRanges.length + products.length)) *
+        100
+    );
+
+    return {
+      totalConnections,
+      orphanedRanges: orphanedRanges.length,
+      orphanedProducts: orphanedProducts.length,
+      completionRate: isNaN(completionRate) ? 0 : completionRate,
     };
-    
-    onRelationshipsChange(newRelationships);
-  }, [selectedGroup, relationships, onRelationshipsChange]);
+  };
 
-  const handleRemoveRangeFromGroup = React.useCallback((rangeId: string) => {
-    if (!selectedGroup) return;
-    
-    const currentRanges = relationships.groupToRanges[selectedGroup] || [];
-    
-    const newRelationships = {
-      ...relationships,
-      groupToRanges: {
-        ...relationships.groupToRanges,
-        [selectedGroup]: currentRanges.filter(id => id !== rangeId)
-      }
-    };
-    
-    onRelationshipsChange(newRelationships);
-    
-    // If we removed the selected range, clear it
-    if (selectedRange === rangeId) {
-      setSelectedRange(null);
-    }
-  }, [selectedGroup, selectedRange, relationships, onRelationshipsChange]);
+  const handleLinkRangeToGroup = (groupId: string, rangeId: string) => {
+    linkRangeToGroup(groupId, rangeId);
+  };
 
-  const handleAddProductToRange = React.useCallback((productId: string) => {
-    if (!selectedRange) return;
-    
-    const currentProducts = relationships.rangeToProducts[selectedRange] || [];
-    
-    // Don't add if already in the list
-    if (currentProducts.includes(productId)) return;
-    
-    const newRelationships = {
-      ...relationships,
-      rangeToProducts: {
-        ...relationships.rangeToProducts,
-        [selectedRange]: [...currentProducts, productId]
-      }
-    };
-    
-    onRelationshipsChange(newRelationships);
-  }, [selectedRange, relationships, onRelationshipsChange]);
+  const handleUnlinkRangeFromGroup = (groupId: string, rangeId: string) => {
+    unlinkRangeFromGroup(groupId, rangeId);
+  };
 
-  const handleRemoveProductFromRange = React.useCallback((productId: string) => {
-    if (!selectedRange) return;
-    
-    const currentProducts = relationships.rangeToProducts[selectedRange] || [];
-    
-    const newRelationships = {
-      ...relationships,
-      rangeToProducts: {
-        ...relationships.rangeToProducts,
-        [selectedRange]: currentProducts.filter(id => id !== productId)
-      }
-    };
-    
-    onRelationshipsChange(newRelationships);
-  }, [selectedRange, relationships, onRelationshipsChange]);
+  const handleLinkProductToRange = (rangeId: string, productId: string) => {
+    linkProductToRange(rangeId, productId);
+  };
 
-  // Optimize drag handlers to prevent excessive re-renders and fix drag functionality
-  const handleRangeOrderChange = React.useCallback((event: DragEndEvent) => {
-    if (!selectedGroup) return;
-    
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    
-    const currentRanges = [...(relationships.groupToRanges[selectedGroup] || [])];
-    const oldIndex = currentRanges.indexOf(String(active.id));
-    const newIndex = currentRanges.indexOf(String(over.id));
-    
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = [...currentRanges];
-      const [movedItem] = newOrder.splice(oldIndex, 1);
-      newOrder.splice(newIndex, 0, movedItem);
-      
-      // Only update if the order actually changed
-      if (JSON.stringify(newOrder) !== JSON.stringify(currentRanges)) {
-        const newRelationships = {
-          ...relationships,
-          groupToRanges: {
-            ...relationships.groupToRanges,
-            [selectedGroup]: newOrder
-          }
-        };
-        
-        onRelationshipsChange(newRelationships);
-      }
-    }
-  }, [selectedGroup, relationships, onRelationshipsChange]);
+  const handleUnlinkProductFromRange = (rangeId: string, productId: string) => {
+    unlinkProductFromRange(rangeId, productId);
+  };
 
-  const handleProductOrderChange = React.useCallback((event: DragEndEvent) => {
-    if (!selectedRange) return;
-    
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    
-    const currentProducts = [...(relationships.rangeToProducts[selectedRange] || [])];
-    const oldIndex = currentProducts.indexOf(String(active.id));
-    const newIndex = currentProducts.indexOf(String(over.id));
-    
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = [...currentProducts];
-      const [movedItem] = newOrder.splice(oldIndex, 1);
-      newOrder.splice(newIndex, 0, movedItem);
-      
-      // Only update if the order actually changed
-      if (JSON.stringify(newOrder) !== JSON.stringify(currentProducts)) {
-        const newRelationships = {
-          ...relationships,
-          rangeToProducts: {
-            ...relationships.rangeToProducts,
-            [selectedRange]: newOrder
-          }
-        };
-        
-        onRelationshipsChange(newRelationships);
-      }
-    }
-  }, [selectedRange, relationships, onRelationshipsChange]);
+  const runAnalysis = async () => {
+    setIsAnalyzing(true);
+    // Simulate analysis delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setIsAnalyzing(false);
+  };
 
-  // Memoize derived data to prevent recalculations on every render
-  const availableRanges = React.useMemo(() => {
-    if (!selectedGroup) return [];
-    
-    const associatedRangeIds = relationships.groupToRanges[selectedGroup] || [];
-    return ranges.filter(range => !associatedRangeIds.includes(range.id));
-  }, [selectedGroup, relationships.groupToRanges, ranges]);
-
-  const availableProducts = React.useMemo(() => {
-    if (!selectedRange) return [];
-    
-    const associatedProductIds = relationships.rangeToProducts[selectedRange] || [];
-    return products.filter(product => !associatedProductIds.includes(product.id));
-  }, [selectedRange, relationships.rangeToProducts, products]);
-
-  const associatedRanges = React.useMemo(() => {
-    if (!selectedGroup) return [];
-    
-    const associatedRangeIds = relationships.groupToRanges[selectedGroup] || [];
-    return associatedRangeIds.map(id => ranges.find(range => range.id === id)).filter(Boolean) as ProductRange[];
-  }, [selectedGroup, relationships.groupToRanges, ranges]);
-
-  const associatedProducts = React.useMemo(() => {
-    if (!selectedRange) return [];
-    
-    const associatedProductIds = relationships.rangeToProducts[selectedRange] || [];
-    return associatedProductIds.map(id => products.find(product => product.id === id)).filter(Boolean) as Product[];
-  }, [selectedRange, relationships.rangeToProducts, products]);
+  const relationshipTree = buildRelationshipTree();
+  const { orphanedRanges, orphanedProducts } = getOrphanedItems();
+  const stats = getRelationshipStats();
 
   return (
-    <div className="p-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Product Groups Column */}
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">Product Groups</h3>
-          </CardHeader>
-          <CardBody>
-            <div className="space-y-2">
-              {groups.map(group => (
-                <Button
-                  key={group.id}
-                  variant={selectedGroup === group.id ? "solid" : "flat"}
-                  color={selectedGroup === group.id ? "primary" : "default"}
-                  className="w-full justify-start"
-                  startContent={<Icon icon={group.icon} width={18} />}
-                  onPress={() => handleGroupSelect(group.id)}
-                >
-                  {group.name}
-                </Button>
-              ))}
-              
-              {groups.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-default-500">No product groups available</p>
-                  <p className="text-xs text-default-400 mt-1">Add groups in the Product Groups tab</p>
-                </div>
-              )}
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-xl font-semibold">Relationship Manager</h3>
+          <p className="text-sm text-foreground-500">Manage connections between groups, ranges, and products</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            color="secondary"
+            variant="flat"
+            onPress={runAnalysis}
+            startContent={<Icon icon="lucide:search" width={18} />}
+            isLoading={isAnalyzing}
+          >
+            {isAnalyzing ? "Analyzing..." : "Analyze Structure"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <Card className="mb-6">
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary-600">{stats.totalConnections}</div>
+              <div className="text-sm text-foreground-500">Total Connections</div>
             </div>
-          </CardBody>
-        </Card>
-        
-        {/* Product Ranges Column */}
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">
-              {selectedGroup ? 
-                `Ranges in ${groups.find(g => g.id === selectedGroup)?.name}` : 
-                "Select a Group"
-              }
-            </h3>
-          </CardHeader>
-          <CardBody>
-            {selectedGroup ? (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Associated Ranges</h4>
-                  {associatedRanges.length > 0 ? (
-                    <DndContext 
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleRangeOrderChange}
-                    >
-                      <SortableContext 
-                        items={associatedRanges.map(range => range.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {associatedRanges.map(range => (
-                          <DraggableItem key={range.id} id={range.id}>
-                            <div 
-                              className={`flex-grow flex items-center gap-2 ${
-                                selectedRange === range.id ? "text-primary font-medium" : ""
-                              }`}
-                              onClick={() => handleRangeSelect(range.id)}
-                            >
-                              <Icon icon="lucide:grip" className="text-default-400" width={16} />
-                              <span>{range.name}</span>
-                            </div>
-                            <Button
-                              isIconOnly
-                              size="sm"
-                              variant="flat"
-                              color="danger"
-                              onPress={() => handleRemoveRangeFromGroup(range.id)}
-                            >
-                              <Icon icon="lucide:x" width={16} />
-                            </Button>
-                          </DraggableItem>
-                        ))}
-                      </SortableContext>
-                    </DndContext>
-                  ) : (
-                    <div className="text-center py-4 border border-dashed border-default-200 rounded-medium">
-                      <p className="text-default-500">No ranges associated</p>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-warning-600">{stats.orphanedRanges}</div>
+              <div className="text-sm text-foreground-500">Orphaned Ranges</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-danger-600">{stats.orphanedProducts}</div>
+              <div className="text-sm text-foreground-500">Orphaned Products</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-success-600">{stats.completionRate}%</div>
+              <div className="text-sm text-foreground-500">Structure Complete</div>
+              <Progress
+                value={stats.completionRate}
+                color={stats.completionRate > 80 ? "success" : stats.completionRate > 50 ? "warning" : "danger"}
+                size="sm"
+                className="mt-1"
+              />
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Tabs aria-label="Relationship Views" defaultSelectedKey="tree">
+        <Tab
+          key="tree"
+          title={
+            <div className="flex items-center gap-2">
+              <Icon icon="lucide:git-branch" width={16} />
+              Tree View
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            {relationshipTree.length === 0 ? (
+              <Card>
+                <CardBody className="text-center py-12">
+                  <div className="flex flex-col items-center gap-4">
+                    <Icon icon="lucide:git-branch" width={48} className="text-foreground-300" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground-600">No Structure Yet</h3>
+                      <p className="text-sm text-foreground-500">Create groups, ranges, and products to see the relationship tree</p>
                     </div>
-                  )}
-                </div>
-                
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Available Ranges</h4>
-                  {availableRanges.length > 0 ? (
-                    <div className="space-y-2">
-                      {availableRanges.map(range => (
-                        <div 
-                          key={range.id}
-                          className="p-3 bg-default-50 rounded-medium border border-default-100 flex items-center justify-between"
-                        >
-                          <span>{range.name}</span>
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="flat"
-                            color="primary"
-                            onPress={() => handleAddRangeToGroup(range.id)}
-                          >
-                            <Icon icon="lucide:plus" width={16} />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 border border-dashed border-default-200 rounded-medium">
-                      <p className="text-default-500">No available ranges</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                </CardBody>
+              </Card>
             ) : (
-              <div className="text-center py-12">
-                <Icon icon="lucide:arrow-left" className="mx-auto mb-2 text-default-400" width={24} />
-                <p className="text-default-500">Select a product group</p>
-              </div>
+              <Accordion selectionMode="multiple" variant="bordered">
+                {relationshipTree.map((group) => (
+                  <AccordionItem
+                    key={group.id}
+                    title={
+                      <div className="flex items-center gap-3">
+                        <Avatar icon={<Icon icon="lucide:folder" width={16} />} className="w-6 h-6 bg-primary-100 text-primary-600" />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{group.name}</span>
+                            {group.hasIssues && <Icon icon="lucide:alert-triangle" width={16} className="text-warning-500" />}
+                          </div>
+                          <div className="text-xs text-foreground-500">{group.description || "No description"}</div>
+                        </div>
+                        <Badge content={group.children?.length || 0} color="primary" size="sm">
+                          <div className="w-4 h-4" />
+                        </Badge>
+                      </div>
+                    }
+                  >
+                    {group.children && group.children.length > 0 ? (
+                      <div className="space-y-3 pl-4">
+                        {group.children.map((range) => (
+                          <div key={range.id} className="border-l-2 border-gray-200 pl-4">
+                            <div className="flex items-center gap-3 mb-2">
+                              <Avatar
+                                icon={<Icon icon="lucide:grid-3x3" width={16} />}
+                                className="w-6 h-6 bg-secondary-100 text-secondary-600"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{range.name}</span>
+                                  {range.hasIssues && <Icon icon="lucide:alert-triangle" width={16} className="text-warning-500" />}
+                                </div>
+                                <div className="text-xs text-foreground-500">{range.description || "No description"}</div>
+                              </div>
+                              <Badge content={range.children?.length || 0} color="secondary" size="sm">
+                                <div className="w-4 h-4" />
+                              </Badge>
+                            </div>
+
+                            {range.children && range.children.length > 0 && (
+                              <div className="space-y-2 pl-8">
+                                {range.children.map((product) => (
+                                  <div key={product.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                                    <Avatar
+                                      icon={<Icon icon="lucide:package" width={16} />}
+                                      className="w-5 h-5 bg-success-100 text-success-600"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{product.name}</span>
+                                        {product.code && (
+                                          <Chip size="sm" variant="flat" color="success">
+                                            {product.code}
+                                          </Chip>
+                                        )}
+                                        {product.hasIssues && <Icon icon="lucide:alert-triangle" width={14} className="text-warning-500" />}
+                                      </div>
+                                      {product.overview && <div className="text-xs text-foreground-500">{product.overview}</div>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-foreground-400">
+                        <Icon icon="lucide:inbox" width={32} className="mx-auto mb-2" />
+                        <p className="text-sm">No ranges linked to this group</p>
+                      </div>
+                    )}
+                  </AccordionItem>
+                ))}
+              </Accordion>
             )}
-          </CardBody>
-        </Card>
-        
-        {/* Products Column */}
-        <Card>
-          <CardHeader className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">
-              {selectedRange ? 
-                `Products in ${ranges.find(r => r.id === selectedRange)?.name}` : 
-                "Select a Range"
-              }
-            </h3>
-          </CardHeader>
-          <CardBody>
-            {selectedRange ? (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Associated Products</h4>
-                  {associatedProducts.length > 0 ? (
-                    <DndContext 
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleProductOrderChange}
-                    >
-                      <SortableContext 
-                        items={associatedProducts.map(product => product.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {associatedProducts.map(product => (
-                          <DraggableItem key={product.id} id={product.id}>
-                            <div className="flex-grow flex items-center gap-2">
-                              <Icon icon="lucide:grip" className="text-default-400" width={16} />
+
+            {/* Orphaned Items */}
+            {(orphanedRanges.length > 0 || orphanedProducts.length > 0) && (
+              <Card className="border-warning-200 bg-warning-50">
+                <CardHeader>
+                  <div className="flex items-center gap-2 text-warning-700">
+                    <Icon icon="lucide:alert-triangle" width={20} />
+                    <h4 className="font-semibold">Orphaned Items</h4>
+                  </div>
+                </CardHeader>
+                <CardBody className="pt-0">
+                  {orphanedRanges.length > 0 && (
+                    <div className="mb-4">
+                      <h5 className="font-medium text-sm mb-2">Unlinked Ranges:</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {orphanedRanges.map((range) => (
+                          <div key={range.id} className="flex items-center gap-2 p-2 bg-white rounded border">
+                            <Icon icon="lucide:grid-3x3" width={16} className="text-secondary-600" />
+                            <span className="text-sm">{range.name}</span>
+                            <span className="text-xs text-gray-500">{range.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {orphanedProducts.length > 0 && (
+                    <div>
+                      <h5 className="font-medium text-sm mb-2">Unlinked Products:</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {orphanedProducts.map((product) => (
+                          <div key={product.id} className="flex items-center gap-2 p-2 bg-white rounded border">
+                            <Icon icon="lucide:package" width={16} className="text-success-600" />
+                            <span className="text-sm">{product.name}</span>
+                            <Chip size="sm" variant="flat" color="success">
+                              {product.code}
+                            </Chip>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
+            )}
+          </div>
+        </Tab>
+
+        <Tab
+          key="manage"
+          title={
+            <div className="flex items-center gap-2">
+              <Icon icon="lucide:link" width={16} />
+              Manage Links
+            </div>
+          }
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Group to Range Relationships */}
+            <Card>
+              <CardHeader>
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Icon icon="lucide:arrow-right" width={16} />
+                  Group → Range Links
+                </h4>
+              </CardHeader>
+              <CardBody>
+                <div className="space-y-4">
+                  <Select
+                    label="Select Group"
+                    placeholder="Choose a product group"
+                    selectedKeys={selectedGroup ? new Set([selectedGroup]) : new Set()}
+                    onSelectionChange={(keys) => setSelectedGroup((Array.from(keys)[0] as string) || null)}
+                  >
+                    {productGroups.map((group) => (
+                      <SelectItem key={group.id}>{group.name}</SelectItem>
+                    ))}
+                  </Select>
+
+                  {selectedGroup && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-foreground-700">Available Ranges:</p>
+                      {productRanges.map((range) => {
+                        const isLinked = (relationships.groupToRanges[selectedGroup] || []).includes(range.id);
+                        return (
+                          <div key={range.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Icon icon="lucide:grid-3x3" width={16} className="text-secondary-600" />
                               <div>
-                                <div>{product.name}</div>
-                                <div className="text-xs text-default-500">Code: {product.code}</div>
+                                <div className="font-medium text-sm">{range.name}</div>
+                                <div className="text-xs text-foreground-500">{range.description}</div>
                               </div>
                             </div>
                             <Button
-                              isIconOnly
                               size="sm"
-                              variant="flat"
-                              color="danger"
-                              onPress={() => handleRemoveProductFromRange(product.id)}
+                              color={isLinked ? "danger" : "primary"}
+                              variant={isLinked ? "flat" : "solid"}
+                              onPress={() => {
+                                if (isLinked) {
+                                  handleUnlinkRangeFromGroup(selectedGroup, range.id);
+                                } else {
+                                  handleLinkRangeToGroup(selectedGroup, range.id);
+                                }
+                              }}
                             >
-                              <Icon icon="lucide:x" width={16} />
+                              {isLinked ? "Unlink" : "Link"}
                             </Button>
-                          </DraggableItem>
-                        ))}
-                      </SortableContext>
-                    </DndContext>
-                  ) : (
-                    <div className="text-center py-4 border border-dashed border-default-200 rounded-medium">
-                      <p className="text-default-500">No products associated</p>
-                    </div>
-                  )}
-                </div>
-                
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Available Products</h4>
-                  {availableProducts.length > 0 ? (
-                    <div className="space-y-2">
-                      {availableProducts.map(product => (
-                        <div 
-                          key={product.id}
-                          className="p-3 bg-default-50 rounded-medium border border-default-100 flex items-center justify-between"
-                        >
-                          <div>
-                            <div>{product.name}</div>
-                            <div className="text-xs text-default-500">Code: {product.code}</div>
                           </div>
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="flat"
-                            color="primary"
-                            onPress={() => handleAddProductToRange(product.id)}
-                          >
-                            <Icon icon="lucide:plus" width={16} />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 border border-dashed border-default-200 rounded-medium">
-                      <p className="text-default-500">No available products</p>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              </div>
+              </CardBody>
+            </Card>
+
+            {/* Range to Product Relationships */}
+            <Card>
+              <CardHeader>
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Icon icon="lucide:arrow-right" width={16} />
+                  Range → Product Links
+                </h4>
+              </CardHeader>
+              <CardBody>
+                <div className="space-y-4">
+                  <Select
+                    label="Select Range"
+                    placeholder="Choose a product range"
+                    selectedKeys={selectedRange ? new Set([selectedRange]) : new Set()}
+                    onSelectionChange={(keys) => setSelectedRange((Array.from(keys)[0] as string) || null)}
+                  >
+                    {productRanges.map((range) => (
+                      <SelectItem key={range.id}>{range.name}</SelectItem>
+                    ))}
+                  </Select>
+
+                  {selectedRange && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-foreground-700">Available Products:</p>
+                      {products.map((product) => {
+                        const isLinked = (relationships.rangeToProducts[selectedRange] || []).includes(product.id);
+                        return (
+                          <div key={product.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Icon icon="lucide:package" width={16} className="text-success-600" />
+                              <div>
+                                <div className="font-medium text-sm">{product.name}</div>
+                                <div className="text-xs text-foreground-500">{product.code}</div>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              color={isLinked ? "danger" : "primary"}
+                              variant={isLinked ? "flat" : "solid"}
+                              onPress={() => {
+                                if (isLinked) {
+                                  handleUnlinkProductFromRange(selectedRange, product.id);
+                                } else {
+                                  handleLinkProductToRange(selectedRange, product.id);
+                                }
+                              }}
+                            >
+                              {isLinked ? "Unlink" : "Link"}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          </div>
+        </Tab>
+
+        <Tab
+          key="analysis"
+          title={
+            <div className="flex items-center gap-2">
+              <Icon icon="lucide:bar-chart-3" width={16} />
+              Analysis
+            </div>
+          }
+        >
+          <div className="space-y-6">
+            {isAnalyzing ? (
+              <Card>
+                <CardBody className="text-center py-12">
+                  <Spinner size="lg" color="primary" />
+                  <p className="mt-4 text-foreground-600">Analyzing relationship structure...</p>
+                </CardBody>
+              </Card>
             ) : (
-              <div className="text-center py-12">
-                <Icon icon="lucide:arrow-left" className="mx-auto mb-2 text-default-400" width={24} />
-                <p className="text-default-500">Select a product range</p>
-              </div>
+              <>
+                {/* Detailed Statistics */}
+                <Card>
+                  <CardHeader>
+                    <h4 className="font-semibold">Structure Analysis</h4>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <h5 className="font-medium text-sm mb-2">Groups</h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Total Groups</span>
+                            <span className="text-sm font-medium">{productGroups.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">With Ranges</span>
+                            <span className="text-sm font-medium">
+                              {productGroups.filter((g) => (relationships.groupToRanges[g.id] || []).length > 0).length}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Empty Groups</span>
+                            <span className="text-sm font-medium text-warning-600">
+                              {productGroups.filter((g) => (relationships.groupToRanges[g.id] || []).length === 0).length}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h5 className="font-medium text-sm mb-2">Ranges</h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Total Ranges</span>
+                            <span className="text-sm font-medium">{productRanges.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Linked to Groups</span>
+                            <span className="text-sm font-medium">{productRanges.length - orphanedRanges.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">With Products</span>
+                            <span className="text-sm font-medium">
+                              {productRanges.filter((r) => (relationships.rangeToProducts[r.id] || []).length > 0).length}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h5 className="font-medium text-sm mb-2">Products</h5>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Total Products</span>
+                            <span className="text-sm font-medium">{products.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Linked to Ranges</span>
+                            <span className="text-sm font-medium">{products.length - orphanedProducts.length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Orphaned</span>
+                            <span className="text-sm font-medium text-danger-600">{orphanedProducts.length}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+
+                {/* Recommendations */}
+                <Card>
+                  <CardHeader>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <Icon icon="lucide:lightbulb" width={16} />
+                      Recommendations
+                    </h4>
+                  </CardHeader>
+                  <CardBody>
+                    <div className="space-y-3">
+                      {stats.orphanedProducts > 0 && (
+                        <div className="flex items-start gap-3 p-3 bg-danger-50 rounded-lg border border-danger-200">
+                          <Icon icon="lucide:alert-triangle" width={16} className="text-danger-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-danger-800">
+                              You have {stats.orphanedProducts} unlinked product{stats.orphanedProducts !== 1 ? "s" : ""}
+                            </p>
+                            <p className="text-xs text-danger-600">Link these products to ranges so they appear in your product stepper.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {stats.orphanedRanges > 0 && (
+                        <div className="flex items-start gap-3 p-3 bg-warning-50 rounded-lg border border-warning-200">
+                          <Icon icon="lucide:alert-triangle" width={16} className="text-warning-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-warning-800">
+                              You have {stats.orphanedRanges} unlinked range{stats.orphanedRanges !== 1 ? "s" : ""}
+                            </p>
+                            <p className="text-xs text-warning-600">Link these ranges to product groups to organize your structure.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {productGroups.filter((g) => (relationships.groupToRanges[g.id] || []).length === 0).length > 0 && (
+                        <div className="flex items-start gap-3 p-3 bg-primary-50 rounded-lg border border-primary-200">
+                          <Icon icon="lucide:info" width={16} className="text-primary-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-primary-800">Some product groups are empty</p>
+                            <p className="text-xs text-primary-600">Consider linking ranges to these groups or removing unused groups.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {stats.completionRate >= 90 && (
+                        <div className="flex items-start gap-3 p-3 bg-success-50 rounded-lg border border-success-200">
+                          <Icon icon="lucide:check-circle" width={16} className="text-success-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-success-800">Great job! Your structure is well organized</p>
+                            <p className="text-xs text-success-600">Your data structure is ready for the product stepper.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              </>
             )}
-          </CardBody>
-        </Card>
-      </div>
+          </div>
+        </Tab>
+      </Tabs>
     </div>
   );
 };

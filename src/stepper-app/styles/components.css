@@ -1,0 +1,33 @@
+/* Stepper App Component Styles */
+
+.stepper-progress {
+  @apply rounded-lg p-4;
+}
+
+.stepper-step {
+  @apply flex items-center gap-3 cursor-pointer transition-colors;
+}
+
+.stepper-step.active {
+  @apply text-blue-500;
+}
+
+.stepper-step.completed {
+  @apply text-success;
+}
+
+.product-card {
+  @apply border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer;
+}
+
+.product-card.selected {
+  @apply border-primary bg-primary-50;
+}
+
+.product-gallery {
+  @apply grid grid-cols-2 md:grid-cols-3 gap-4;
+}
+
+.file-download-item {
+  @apply flex items-center gap-3 p-3 rounded-lg  transition-colors;
+}

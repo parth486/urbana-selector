@@ -1,15 +1,16 @@
 import React from "react";
-import { 
-  Card, 
-  CardBody, 
-  Button, 
-  Input, 
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Input,
   Textarea,
-  Table, 
-  TableHeader, 
-  TableColumn, 
-  TableBody, 
-  TableRow, 
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
   TableCell,
   Dropdown,
   DropdownTrigger,
@@ -20,44 +21,70 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
-  useDisclosure
+  useDisclosure,
+  Chip,
+  Avatar,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
-import { IconSelector } from "./IconSelector";
+import { useDataBuilderStore, ProductGroup } from "../../stores/useDataBuilderStore";
 
-interface ProductGroup {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
+interface IconSelectorProps {
+  selectedIcon: string;
+  onIconSelect: (icon: string) => void;
 }
 
-interface ProductGroupsManagerProps {
-  groups: ProductGroup[];
-  onGroupsChange: (groups: ProductGroup[]) => void;
-}
+const IconSelector: React.FC<IconSelectorProps> = ({ selectedIcon, onIconSelect }) => {
+  const icons = [
+    "lucide:box",
+    "lucide:home",
+    "lucide:bath",
+    "lucide:route",
+    "lucide:wheelchair",
+    "lucide:armchair",
+    "lucide:lamp",
+    "lucide:tree",
+    "lucide:building",
+    "lucide:car",
+    "lucide:tools",
+    "lucide:shield",
+  ];
 
-export const ProductGroupsManager: React.FC<ProductGroupsManagerProps> = ({ 
-  groups, 
-  onGroupsChange 
-}) => {
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      {icons.map((icon) => (
+        <Button
+          key={icon}
+          isIconOnly
+          variant={selectedIcon === icon ? "solid" : "bordered"}
+          color={selectedIcon === icon ? "primary" : "default"}
+          onPress={() => onIconSelect(icon)}
+          className="h-12 w-12"
+        >
+          <Icon icon={icon} width={20} />
+        </Button>
+      ))}
+    </div>
+  );
+};
+
+export const ProductGroupsManager: React.FC = () => {
+  const { productGroups, addProductGroup, updateProductGroup, removeProductGroup, getRangesForGroup } = useDataBuilderStore();
+
   const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
   const [editingGroup, setEditingGroup] = React.useState<ProductGroup | null>(null);
-  const [formData, setFormData] = React.useState<ProductGroup>({
-    id: '',
-    name: '',
-    icon: 'lucide:box',
-    description: ''
+  const [formData, setFormData] = React.useState<Omit<ProductGroup, "id">>({
+    name: "",
+    icon: "lucide:box",
+    description: "",
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   const handleAddGroup = () => {
     setEditingGroup(null);
     setFormData({
-      id: '',
-      name: '',
-      icon: 'lucide:box',
-      description: ''
+      name: "",
+      icon: "lucide:box",
+      description: "",
     });
     setErrors({});
     onOpen();
@@ -65,209 +92,205 @@ export const ProductGroupsManager: React.FC<ProductGroupsManagerProps> = ({
 
   const handleEditGroup = (group: ProductGroup) => {
     setEditingGroup(group);
-    setFormData({ ...group });
+    setFormData({
+      name: group.name,
+      icon: group.icon,
+      description: group.description,
+    });
     setErrors({});
     onOpen();
   };
 
   const handleDeleteGroup = (groupId: string) => {
-    if (confirm("Are you sure you want to delete this product group?")) {
-      onGroupsChange(groups.filter(group => group.id !== groupId));
+    const rangesCount = getRangesForGroup(groupId).length;
+    const message =
+      rangesCount > 0
+        ? `Are you sure you want to delete this product group? This will also remove ${rangesCount} associated range(s) and their products.`
+        : "Are you sure you want to delete this product group?";
+
+    if (confirm(message)) {
+      removeProductGroup(groupId);
     }
   };
 
-  const handleInputChange = (field: keyof ProductGroup, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Generate ID from name if it's a new group
-    if (field === 'name' && !editingGroup) {
-      const generatedId = value.toLowerCase().replace(/\s+/g, '-');
-      setFormData(prev => ({ ...prev, id: generatedId }));
-    }
-    
+  const handleInputChange = (field: keyof Omit<ProductGroup, "id">, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+
     // Clear error when field is edited
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
   const handleIconSelect = (icon: string) => {
-    setFormData(prev => ({ ...prev, icon }));
+    setFormData((prev) => ({ ...prev, icon }));
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = "Name is required";
     }
-    
-    if (!formData.id.trim()) {
-      newErrors.id = "ID is required";
-    } else if (
-      !editingGroup && 
-      groups.some(group => group.id === formData.id)
-    ) {
-      newErrors.id = "ID must be unique";
+
+    // Check for duplicate names (excluding current group when editing)
+    const isDuplicate = productGroups.some(
+      (group) => group.name.toLowerCase() === formData.name.toLowerCase() && (!editingGroup || group.id !== editingGroup.id)
+    );
+
+    if (isDuplicate) {
+      newErrors.name = "A product group with this name already exists";
     }
-    
+
     if (!formData.description.trim()) {
       newErrors.description = "Description is required";
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = () => {
     if (!validateForm()) return;
-    
+
     if (editingGroup) {
       // Update existing group
-      onGroupsChange(
-        groups.map(group => 
-          group.id === editingGroup.id ? formData : group
-        )
-      );
+      updateProductGroup(editingGroup.id, formData);
     } else {
       // Add new group
-      onGroupsChange([...groups, formData]);
+      addProductGroup(formData);
     }
-    
+
     onClose();
   };
 
   return (
-    <div className="p-6">
+    <>
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-semibold">Product Groups</h3>
-        <Button 
-          color="primary" 
-          onPress={handleAddGroup}
-          startContent={<Icon icon="lucide:plus" width={18} />}
-        >
+        <div>
+          <h3 className="text-xl font-semibold">Product Groups</h3>
+          <p className="text-sm text-foreground-500">Organize your products into logical categories</p>
+        </div>
+        <Button color="primary" onPress={handleAddGroup} startContent={<Icon icon="lucide:plus" width={18} />}>
           Add Product Group
         </Button>
       </div>
-      
-      <Card>
-        <CardBody className="p-0">
-          <Table removeWrapper aria-label="Product Groups Table">
-            <TableHeader>
-              <TableColumn>ICON</TableColumn>
-              <TableColumn>NAME</TableColumn>
-              <TableColumn>DESCRIPTION</TableColumn>
-              <TableColumn>ACTIONS</TableColumn>
-            </TableHeader>
-            <TableBody emptyContent="No product groups added yet.">
-              {groups.map((group) => (
-                <TableRow key={group.id}>
-                  <TableCell>
-                    <div className="w-10 h-10 rounded-full bg-default-100 flex items-center justify-center">
-                      <Icon icon={group.icon} width={20} />
+
+      {productGroups.length === 0 ? (
+        <Card>
+          <CardBody className="text-center py-12">
+            <div className="flex flex-col items-center gap-4">
+              <Icon icon="lucide:layers" width={48} className="text-foreground-300" />
+              <div>
+                <h3 className="text-lg font-semibold text-foreground-600">No Product Groups Yet</h3>
+                <p className="text-sm text-foreground-500">Create your first product group to get started</p>
+              </div>
+              <Button color="primary" onPress={handleAddGroup} startContent={<Icon icon="lucide:plus" width={18} />}>
+                Add Product Group
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {productGroups.map((group) => {
+            const rangesCount = getRangesForGroup(group.id).length;
+
+            return (
+              <Card key={group.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start w-full">
+                    <div className="flex items-center gap-3">
+                      <Avatar icon={<Icon icon={group.icon} width={20} />} className="bg-primary-100 text-primary-800" size="sm" />
+                      <div>
+                        <h4 className="text-lg font-semibold">{group.name}</h4>
+                        <Chip size="sm" variant="flat" color="primary">
+                          {rangesCount} range{rangesCount !== 1 ? "s" : ""}
+                        </Chip>
+                      </div>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{group.name}</p>
-                      <p className="text-xs text-default-500">ID: {group.id}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <p className="line-clamp-2">{group.description}</p>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="flat" 
-                        color="primary"
-                        onPress={() => handleEditGroup(group)}
-                        startContent={<Icon icon="lucide:edit" width={16} />}
-                      >
-                        Edit
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="flat" 
-                        color="danger"
-                        onPress={() => handleDeleteGroup(group.id)}
-                        startContent={<Icon icon="lucide:trash" width={16} />}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardBody>
-      </Card>
-      
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="2xl">
+                    <Dropdown>
+                      <DropdownTrigger>
+                        <Button isIconOnly variant="light" size="sm">
+                          <Icon icon="lucide:more-vertical" width={16} />
+                        </Button>
+                      </DropdownTrigger>
+                      <DropdownMenu aria-label="Group Actions">
+                        <DropdownItem
+                          key="edit"
+                          startContent={<Icon icon="lucide:edit" width={16} />}
+                          onPress={() => handleEditGroup(group)}
+                        >
+                          Edit
+                        </DropdownItem>
+                        <DropdownItem
+                          key="delete"
+                          className="text-danger"
+                          color="danger"
+                          startContent={<Icon icon="lucide:trash" width={16} />}
+                          onPress={() => handleDeleteGroup(group.id)}
+                        >
+                          Delete
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </Dropdown>
+                  </div>
+                </CardHeader>
+                <CardBody className="pt-0">
+                  <p className="text-sm text-foreground-600">{group.description}</p>
+                </CardBody>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="lg">
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>
-                {editingGroup ? "Edit Product Group" : "Add Product Group"}
-              </ModalHeader>
+              <ModalHeader>{editingGroup ? "Edit Product Group" : "Add Product Group"}</ModalHeader>
               <ModalBody>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      label="Name"
-                      placeholder="Enter product group name"
-                      value={formData.name}
-                      onValueChange={(value) => handleInputChange('name', value)}
-                      isRequired
-                      isInvalid={!!errors.name}
-                      errorMessage={errors.name}
-                    />
-                    <Input
-                      label="ID"
-                      placeholder="Enter unique identifier"
-                      value={formData.id}
-                      onValueChange={(value) => handleInputChange('id', value)}
-                      isRequired
-                      isDisabled={!!editingGroup} // Can't change ID of existing group
-                      isInvalid={!!errors.id}
-                      errorMessage={errors.id}
-                      description="Auto-generated from name for new groups"
-                    />
-                  </div>
-                  
+                  <Input
+                    label="Name"
+                    placeholder="Enter group name"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    errorMessage={errors.name}
+                    isInvalid={!!errors.name}
+                    isRequired
+                  />
+
                   <div>
-                    <IconSelector 
-                      selectedIcon={formData.icon} 
-                      onSelectIcon={handleIconSelect} 
-                    />
+                    <label className="text-sm font-medium text-foreground-700 mb-2 block">Icon</label>
+                    <IconSelector selectedIcon={formData.icon} onIconSelect={handleIconSelect} />
                   </div>
-                  
+
                   <Textarea
                     label="Description"
-                    placeholder="Enter product group description"
+                    placeholder="Enter group description"
                     value={formData.description}
-                    onValueChange={(value) => handleInputChange('description', value)}
-                    isRequired
-                    isInvalid={!!errors.description}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
                     errorMessage={errors.description}
-                    minRows={3}
+                    isInvalid={!!errors.description}
+                    isRequired
+                    rows={3}
                   />
                 </div>
               </ModalBody>
               <ModalFooter>
-                <Button variant="flat" color="danger" onPress={onClose}>
+                <Button variant="light" onPress={onClose}>
                   Cancel
                 </Button>
                 <Button color="primary" onPress={handleSubmit}>
-                  {editingGroup ? "Update Group" : "Add Group"}
+                  {editingGroup ? "Update" : "Add"} Group
                 </Button>
               </ModalFooter>
             </>
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </>
   );
 };

@@ -4,7 +4,7 @@ Build a WordPress plugin named “Urbana Selector”. It is product configurator
 
 ## Core
 The two react app already provided, but should be revisioned and enhanced, since they lack performce and optiomization, and dont have connection to WordPress. (folders src/stepper-app and src/data-builder-app). Add zustand for them.
-Third app, which is responsible for managing customer submissions should be created as well (folder src/admin-orders-app).
+Third react app, which is responsible for managing customer submissions should be created as well (folder src/admin-orders-app).
 
 ## Flow
 

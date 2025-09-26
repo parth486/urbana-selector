@@ -1,15 +1,14 @@
-import React from "react";
-import { Button, Spinner, Alert } from "@heroui/react";
+import { useEffect } from "react";
+import { Spinner, Alert, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { DataBuilder } from "./components/data-builder/DataBuilder";
 import { useDataBuilderStore } from "./stores/useDataBuilderStore";
 
 export default function App() {
-  const { productGroups, isDirty, isSaving, isLoading, error, lastSaved, saveData, loadData, clearError, initializeFromWindowData } =
-    useDataBuilderStore();
+  const { productGroups, isLoading, error, clearError, initializeFromWindowData, loadData } = useDataBuilderStore();
 
-  // Initialize from window data on first load - REMOVE the default data override
-  React.useEffect(() => {
+  // Initialize from window data on first load
+  useEffect(() => {
     const windowData = (window as any).urbanaAdmin;
 
     if (windowData && productGroups.length === 0) {
@@ -17,15 +16,6 @@ export default function App() {
       initializeFromWindowData();
     }
   }, [initializeFromWindowData, productGroups.length]);
-
-  const handleSave = async () => {
-    try {
-      clearError();
-      await saveData();
-    } catch (error) {
-      console.error("Save failed:", error);
-    }
-  };
 
   const handleLoad = async () => {
     try {
@@ -58,13 +48,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {lastSaved && (
-              <div className="text-sm text-foreground-500 text-right">
-                <div>Last saved:</div>
-                <div className="font-medium">{new Date(lastSaved).toLocaleString()}</div>
-              </div>
-            )}
-
             <Button
               variant="flat"
               color="primary"
@@ -74,18 +57,6 @@ export default function App() {
             >
               Refresh Data
             </Button>
-
-            {isDirty && (
-              <Button
-                color="primary"
-                startContent={<Icon icon="lucide:save" width={18} />}
-                onPress={handleSave}
-                isLoading={isSaving}
-                isDisabled={isSaving}
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -102,17 +73,6 @@ export default function App() {
                 Dismiss
               </Button>
             }
-          />
-        )}
-
-        {/* Dirty State Indicator */}
-        {isDirty && !error && (
-          <Alert
-            color="warning"
-            variant="flat"
-            className="mb-6"
-            title="Unsaved Changes"
-            description="You have unsaved changes. Don't forget to save your work!"
           />
         )}
 

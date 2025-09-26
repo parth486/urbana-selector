@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Tabs, Tab, Card, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
+import { addToast } from "@heroui/react";
 import { ProductGroupsManager } from "./ProductGroupsManager";
 import { ProductRangesManager } from "./ProductRangesManager";
 import { ProductsManager } from "./ProductsManager";
@@ -21,7 +22,11 @@ export const DataBuilder: React.FC = () => {
     loadData,
     saveData,
     isLoading,
+    isSaving,
+    isDirty,
+    lastSaved,
     initializeFromWindowData,
+    clearError,
   } = useDataBuilderStore();
 
   const [currentStepperId, setCurrentStepperId] = useState<number | null>(null);
@@ -39,12 +44,16 @@ export const DataBuilder: React.FC = () => {
 
   const handleSaveData = async () => {
     try {
+      clearError();
       const stepperId = await saveData();
       if (stepperId) {
         setCurrentStepperId(stepperId);
       }
+      addToast({ color: "success", title: "Data saved successfully!" });
     } catch (error) {
       console.error("Failed to save data:", error);
+
+      addToast({ color: "danger", title: "Failed to save data. Please try again." });
     }
   };
 
@@ -56,18 +65,28 @@ export const DataBuilder: React.FC = () => {
       window.location.href = currentUrl.toString();
     } catch (error) {
       console.error("Failed to load data builder:", error);
+
+      addToast({ color: "danger", title: "Failed to load data builder" });
     }
   };
 
   const handleExportData = () => {
-    const data = exportData();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-    const downloadAnchorNode = document.createElement("a");
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "product-configurator-data.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    try {
+      const data = exportData();
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+      const downloadAnchorNode = document.createElement("a");
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "product-configurator-data.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+
+      addToast({ color: "success", title: "Data exported successfully!" });
+    } catch (error) {
+      console.error("Export failed:", error);
+
+      addToast({ color: "danger", title: "Failed to export data" });
+    }
   };
 
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,9 +100,12 @@ export const DataBuilder: React.FC = () => {
         importData(importedData);
         // Reset the file input
         event.target.value = "";
+
+        addToast({ color: "success", title: "Data imported successfully!" });
       } catch (error) {
         console.error("Error parsing imported data:", error);
-        alert("Invalid data format. Please check your JSON file.");
+
+        addToast({ color: "danger", title: "Invalid data format. Please check your JSON file." });
       }
     };
     reader.readAsText(file);
@@ -92,27 +114,40 @@ export const DataBuilder: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-2xl font-semibold text-foreground">
-            Data Management
-            {currentStepperId && <span className="text-sm text-foreground-500 ml-2">(Stepper ID: {currentStepperId})</span>}
-          </h2>
-          <p className="text-sm text-foreground-500 mt-1">Manage product groups, ranges, products, and their relationships</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold text-foreground">
+              Data Management
+              {currentStepperId && <span className="text-sm text-foreground-500 ml-2">(Stepper ID: {currentStepperId})</span>}
+            </h2>
+            <p className="text-sm text-foreground-500 mt-1">Manage product groups, ranges, products, and their relationships</p>
+          </div>
         </div>
+
         <div className="flex gap-2">
-          {/* Save Button */}
+          {/* Last Saved Display */}
+          {lastSaved && (
+            <div className="text-sm text-foreground-500 text-right ml-6">
+              <div className="text-xs">Last saved:</div>
+              <div className="font-medium">{new Date(lastSaved).toLocaleString()}</div>
+            </div>
+          )}
+          {/* Save Button with loading and dirty state */}
           <Button
-            color="success"
-            variant="flat"
+            color={isDirty ? "primary" : "success"}
+            variant={isDirty ? "solid" : "flat"}
             onPress={handleSaveData}
-            isLoading={isLoading}
-            startContent={<Icon icon="lucide:save" width={18} />}
+            isLoading={isSaving}
+            isDisabled={isSaving}
+            startContent={isSaving ? "" : <Icon icon="lucide:save" width={18} />}
           >
-            Save Data
+            {isSaving ? "Saving..." : isDirty ? "Save Changes" : "Save Data"}
           </Button>
+
           <Button color="primary" variant="flat" onPress={handleExportData} startContent={<Icon icon="lucide:download" width={18} />}>
             Export Data
           </Button>
+
           <label className="cursor-pointer">
             <Button color="primary" variant="flat" as="span" startContent={<Icon icon="lucide:upload" width={18} />}>
               Import Data

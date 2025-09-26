@@ -203,7 +203,7 @@ export const OrdersTable: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={isOpen} onClose={onClose} size="2xl">
+      <Modal isOpen={isOpen} onClose={onClose} size="2xl" className="urbana-modal">
         <ModalContent>
           {(onClose) => (
             <>
@@ -272,6 +272,7 @@ export const OrdersTable: React.FC = () => {
                         onChange={(e) => setNotes(e.target.value)}
                         placeholder="Add internal notes about this submission..."
                         minRows={3}
+                        classNames={{ input: "urbana-input" }}
                       />
                     </div>
                   </div>

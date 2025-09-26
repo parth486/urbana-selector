@@ -277,6 +277,7 @@ export const ProductGroupsManager: React.FC = () => {
                     isInvalid={!!errors.description}
                     isRequired
                     rows={3}
+                    classNames={{ input: "urbana-input" }}
                   />
                 </div>
               </ModalBody>

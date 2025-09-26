@@ -56,8 +56,20 @@ const FileManager: React.FC<FileManagerProps> = ({ files, onFilesChange }) => {
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <Input placeholder="File name" value={fileName} onChange={(e) => setFileName(e.target.value)} size="sm" />
-        <Input placeholder="File URL" value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} size="sm" />
+        <Input
+          placeholder="File name"
+          value={fileName}
+          onChange={(e) => setFileName(e.target.value)}
+          size="sm"
+          classNames={{ input: "urbana-input" }}
+        />
+        <Input
+          placeholder="File URL"
+          value={fileUrl}
+          onChange={(e) => setFileUrl(e.target.value)}
+          size="sm"
+          classNames={{ input: "urbana-input" }}
+        />
         <Button size="sm" color="primary" onPress={handleAddFile} isDisabled={!fileName.trim() || !fileUrl.trim()}>
           Add
         </Button>
@@ -110,6 +122,7 @@ const SpecificationManager: React.FC<SpecificationManagerProps> = ({ specificati
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && handleAddSpec()}
           size="sm"
+          classNames={{ input: "urbana-input" }}
         />
         <Button size="sm" color="primary" onPress={handleAddSpec} isDisabled={!inputValue.trim()}>
           Add
@@ -395,7 +408,7 @@ export const ProductsManager: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="3xl" scrollBehavior="inside">
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="3xl" scrollBehavior="inside" className="urbana-modal">
         <ModalContent>
           {(onClose) => (
             <>
@@ -413,6 +426,7 @@ export const ProductsManager: React.FC = () => {
                           errorMessage={errors.code}
                           isInvalid={!!errors.code}
                           isRequired
+                          classNames={{ input: "urbana-input" }}
                         />
 
                         <Input
@@ -423,6 +437,7 @@ export const ProductsManager: React.FC = () => {
                           errorMessage={errors.name}
                           isInvalid={!!errors.name}
                           isRequired
+                          classNames={{ input: "urbana-input" }}
                         />
                       </div>
 
@@ -450,6 +465,7 @@ export const ProductsManager: React.FC = () => {
                         isInvalid={!!errors.overview}
                         isRequired
                         rows={2}
+                        classNames={{ input: "urbana-input" }}
                       />
 
                       <Textarea
@@ -461,6 +477,7 @@ export const ProductsManager: React.FC = () => {
                         isInvalid={!!errors.description}
                         isRequired
                         rows={4}
+                        classNames={{ input: "urbana-input" }}
                       />
                     </div>
                   </Tab>
@@ -493,6 +510,7 @@ export const ProductsManager: React.FC = () => {
                                   handleInputChange("imageGallery", newGallery);
                                 }}
                                 size="sm"
+                                classNames={{ input: "urbana-input" }}
                               />
                               <Button
                                 size="sm"

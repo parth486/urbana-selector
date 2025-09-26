@@ -34,7 +34,7 @@ export const OrdersFilters: React.FC = () => {
   return (
     <Card className="shadow-sm">
       <CardBody className="p-4">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end justify-between">
+        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end justify-between urbana-orders-filters">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
             <div className="flex-1 min-w-64">
               <Input
@@ -45,6 +45,7 @@ export const OrdersFilters: React.FC = () => {
                 startContent={<Icon icon="heroicons:magnifying-glass" className="w-4 h-4 text-gray-400" />}
                 isClearable
                 onClear={() => setSearchQuery("")}
+                classNames={{ input: "urbana-input" }}
               />
             </div>
 

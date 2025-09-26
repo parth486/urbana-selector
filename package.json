@@ -14,6 +14,8 @@
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@heroui/react": "2.8.3",
+    "@heroui/toast": "^2.0.16",
+    "@iconify-json/lucide": "^1.2.68",
     "@iconify/react": "latest",
     "@tailwindcss/postcss": "4.1.11",
     "@tailwindcss/vite": "4.1.11",

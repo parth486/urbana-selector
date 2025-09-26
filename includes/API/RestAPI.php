@@ -143,13 +143,15 @@ class RestAPI {
 			return new \WP_Error( 'submission_failed', 'Failed to save submission', array( 'status' => 500 ) );
 		}
 
+		$submission_id = $this->db_manager->get_last_insert_id();
+
 		// Send email notification
 		$this->send_email_notification( $submission_data );
 
 		return new \WP_REST_Response(
 			array(
 				'success' => true,
-				'id'      => $this->db_manager->wpdb->insert_id,
+				'id'      => $submission_id,
 			),
 			201
 		);

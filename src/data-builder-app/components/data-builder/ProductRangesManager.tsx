@@ -54,6 +54,7 @@ const TagInput: React.FC<TagInputProps> = ({ tags, onTagsChange }) => {
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleAddTag}
+        classNames={{ input: "urbana-input" }}
       />
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -320,7 +321,7 @@ export const ProductRangesManager: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="2xl">
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="2xl" className="urbana-modal">
         <ModalContent>
           {(onClose) => (
             <>
@@ -335,6 +336,7 @@ export const ProductRangesManager: React.FC = () => {
                     errorMessage={errors.name}
                     isInvalid={!!errors.name}
                     isRequired
+                    classNames={{ input: "urbana-input" }}
                   />
 
                   <Select
@@ -362,6 +364,7 @@ export const ProductRangesManager: React.FC = () => {
                     placeholder="Enter image URL (optional)"
                     value={formData.image}
                     onChange={(e) => handleInputChange("image", e.target.value)}
+                    classNames={{ input: "urbana-input" }}
                   />
 
                   <Textarea
@@ -373,6 +376,7 @@ export const ProductRangesManager: React.FC = () => {
                     isInvalid={!!errors.description}
                     isRequired
                     rows={3}
+                    classNames={{ input: "urbana-input" }}
                   />
 
                   <div>

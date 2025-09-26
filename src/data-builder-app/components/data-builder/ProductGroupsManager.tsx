@@ -245,7 +245,7 @@ export const ProductGroupsManager: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="lg">
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="lg" className="urbana-modal">
         <ModalContent>
           {(onClose) => (
             <>
@@ -260,6 +260,7 @@ export const ProductGroupsManager: React.FC = () => {
                     errorMessage={errors.name}
                     isInvalid={!!errors.name}
                     isRequired
+                    classNames={{ input: "urbana-input" }}
                   />
 
                   <div>

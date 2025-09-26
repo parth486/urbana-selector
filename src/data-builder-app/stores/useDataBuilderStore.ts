@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { devtools, persist } from "zustand/middleware";
+import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
 export interface ProductGroup {
@@ -43,6 +43,7 @@ export interface Relationships {
 }
 
 export interface ProductDataStructure {
+  id?: number; // Add optional ID field
   stepperForm: {
     steps: Array<{
       step: number;
@@ -86,6 +87,7 @@ interface DataBuilderState {
   getRangeById: (rangeId: string) => ProductRange | undefined;
 
   // Data management actions
+  initializeFromWindowData: () => void;
   initializeFromProductData: (data: ProductDataStructure) => void;
   updateProductData: (data: ProductDataStructure) => void;
   exportData: () => ProductDataStructure;
@@ -116,9 +118,9 @@ interface DataBuilderState {
   updateOptions: (options: Record<string, string[]>) => void;
   updateContactFields: (fields: any[]) => void;
 
-  // Persistence actions
-  saveData: () => Promise<void>;
-  loadData: () => Promise<void>;
+  // Persistence actions - Fixed return types
+  saveData: () => Promise<number | undefined>;
+  loadData: (stepperId?: number) => Promise<void>;
   resetData: () => void;
   importData: (data: ProductDataStructure) => void;
 
@@ -219,6 +221,7 @@ const getTagsForRange = (rangeName: string): string[] => {
 };
 
 const initialProductData: ProductDataStructure = {
+  id: 1, // Add default ID
   stepperForm: {
     steps: [
       {
@@ -288,530 +291,626 @@ const initialProductData: ProductDataStructure = {
 
 export const useDataBuilderStore = create<DataBuilderState>()(
   devtools(
-    persist(
-      immer((set, get) => ({
-        // Initial state
-        productData: initialProductData,
-        productGroups: [],
-        productRanges: [],
-        products: [],
-        relationships: {
-          groupToRanges: {},
-          rangeToProducts: {},
-        },
-        isDirty: false,
-        isSaving: false,
-        isLoading: false,
-        lastSaved: null,
-        error: null,
+    immer((set, get) => ({
+      // Initial state
+      productData: initialProductData,
+      productGroups: [],
+      productRanges: [],
+      products: [],
+      relationships: {
+        groupToRanges: {},
+        rangeToProducts: {},
+      },
+      isDirty: false,
+      isSaving: false,
+      isLoading: false,
+      lastSaved: null,
+      error: null,
 
-        // Computed getters
-        getRangesForGroup: (groupId: string) => {
-          const { productRanges, relationships } = get();
-          const rangeIds = relationships.groupToRanges[groupId] || [];
-          return productRanges.filter((range) => rangeIds.includes(range.id));
-        },
+      // Initialize from window data - Fixed implementation
+      initializeFromWindowData: () => {
+        const windowData = (window as any).urbanaAdmin;
 
-        getProductsForRange: (rangeId: string) => {
-          const { products, relationships } = get();
-          const productIds = relationships.rangeToProducts[rangeId] || [];
-          return products.filter((product) => productIds.includes(product.id));
-        },
+        if (!windowData) {
+          console.warn("No urbanaAdmin window data found");
+          return;
+        }
 
-        getProductById: (productId: string) => {
-          const { products } = get();
-          return products.find((product) => product.id === productId);
-        },
-
-        getGroupById: (groupId: string) => {
-          const { productGroups } = get();
-          return productGroups.find((group) => group.id === groupId);
-        },
-
-        getRangeById: (rangeId: string) => {
-          const { productRanges } = get();
-          return productRanges.find((range) => range.id === rangeId);
-        },
-
-        // Data management actions
-        initializeFromProductData: (data: ProductDataStructure) =>
+        // Always set the stepper form data structure first
+        if (windowData.stepperFormData) {
+          console.log("Loading stepper form data:", windowData.stepperFormData);
           set((draft) => {
-            draft.productData = data;
-
-            // Extract product groups
-            const groups = (data.stepperForm.steps[0].categories || []).map((name: string) => ({
-              id: generateId(name),
-              name,
-              icon: getDefaultIconForGroup(name),
-              description: getDescriptionForGroup(name),
-            }));
-            draft.productGroups = groups;
-
-            // Extract product ranges
-            const ranges: ProductRange[] = [];
-            Object.entries(data.stepperForm.steps[1].ranges || {}).forEach(([groupName, rangeNames]: [string, any]) => {
-              rangeNames.forEach((name: string) => {
-                ranges.push({
-                  id: generateId(name),
-                  name,
-                  image: "",
-                  description: getDescriptionForRange(name),
-                  tags: getTagsForRange(name),
-                });
-              });
-            });
-            draft.productRanges = ranges;
-
-            // Extract products
-            const productsList: Product[] = [];
-            Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
-              productCodes.forEach((code: string) => {
-                const productDetails = data.stepperForm.steps[3].productDetails?.[code];
-                productsList.push({
-                  id: generateId(code),
-                  code,
-                  name: productDetails?.name || `${code} Product`,
-                  overview: productDetails?.overview || "",
-                  description: productDetails?.description || "",
-                  specifications: productDetails?.specifications || [],
-                  imageGallery: productDetails?.imageGallery || [],
-                  files: productDetails?.files || {},
-                });
-              });
-            });
-            draft.products = productsList;
-
-            // Extract relationships
-            const groupToRanges: Record<string, string[]> = {};
-            Object.entries(data.stepperForm.steps[1].ranges || {}).forEach(([groupName, rangeNames]: [string, any]) => {
-              const groupId = generateId(groupName);
-              groupToRanges[groupId] = (rangeNames as string[]).map((name) => generateId(name));
-            });
-
-            const rangeToProducts: Record<string, string[]> = {};
-            Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
-              const rangeId = generateId(rangeName);
-              rangeToProducts[rangeId] = (productCodes as string[]).map((code) => generateId(code));
-            });
-
-            draft.relationships = {
-              groupToRanges,
-              rangeToProducts,
-            };
-          }),
-
-        updateProductData: (data: ProductDataStructure) =>
-          set((draft) => {
-            draft.productData = data;
-            draft.isDirty = true;
-          }),
-
-        exportData: () => {
-          const { productGroups, productRanges, products, relationships, productData } = get();
-
-          // Build the step data structure
-          const updatedData: ProductDataStructure = {
-            stepperForm: {
-              steps: [
-                {
-                  step: 1,
-                  title: "Select Product Group",
-                  categories: productGroups.map((group) => group.name),
-                },
-                {
-                  step: 2,
-                  title: "Select Product Range",
-                  ranges: (() => {
-                    const rangesObj: Record<string, string[]> = {};
-                    Object.entries(relationships.groupToRanges).forEach(([groupId, rangeIds]) => {
-                      const group = productGroups.find((g) => g.id === groupId);
-                      if (group) {
-                        rangesObj[group.name] = rangeIds
-                          .map((rangeId) => {
-                            const range = productRanges.find((r) => r.id === rangeId);
-                            return range ? range.name : "";
-                          })
-                          .filter((name) => name !== "");
-                      }
-                    });
-                    return rangesObj;
-                  })(),
-                },
-                {
-                  step: 3,
-                  title: "Select Individual Product",
-                  products: (() => {
-                    const productsObj: Record<string, string[]> = {};
-                    Object.entries(relationships.rangeToProducts).forEach(([rangeId, productIds]) => {
-                      const range = productRanges.find((r) => r.id === rangeId);
-                      if (range) {
-                        productsObj[range.name] = productIds
-                          .map((productId) => {
-                            const product = products.find((p) => p.id === productId);
-                            return product ? product.code : "";
-                          })
-                          .filter((code) => code !== "");
-                      }
-                    });
-                    return productsObj;
-                  })(),
-                },
-                {
-                  step: 4,
-                  title: "View Product Content",
-                  productDetails: (() => {
-                    const detailsObj: Record<string, ProductContent> = {};
-                    products.forEach((product) => {
-                      detailsObj[product.code] = {
-                        name: product.name,
-                        overview: product.overview,
-                        description: product.description,
-                        specifications: product.specifications,
-                        imageGallery: product.imageGallery,
-                        files: product.files,
-                      };
-                    });
-                    return detailsObj;
-                  })(),
-                },
-                // Keep existing options and contact fields
-                productData.stepperForm.steps[4] || {
-                  step: 5,
-                  title: "Configure Options",
-                  options: {},
-                },
-                productData.stepperForm.steps[5] || {
-                  step: 6,
-                  title: "Contact Information",
-                  fields: initialProductData.stepperForm.steps[5].fields,
-                },
-              ],
-            },
-          };
-
-          return updatedData;
-        },
-
-        // Product Group actions
-        addProductGroup: (group: Omit<ProductGroup, "id">) =>
-          set((draft) => {
-            const id = generateId(group.name);
-            const newGroup: ProductGroup = {
-              ...group,
-              id,
-              icon: group.icon || getDefaultIconForGroup(group.name),
-              description: group.description || getDescriptionForGroup(group.name),
-            };
-
-            // Check if group already exists
-            const exists = draft.productGroups.some((g) => g.id === id);
-            if (!exists) {
-              draft.productGroups.push(newGroup);
-              draft.relationships.groupToRanges[id] = [];
-              draft.isDirty = true;
-            }
-          }),
-
-        updateProductGroup: (id: string, updates: Partial<ProductGroup>) =>
-          set((draft) => {
-            const index = draft.productGroups.findIndex((g) => g.id === id);
-            if (index !== -1) {
-              draft.productGroups[index] = { ...draft.productGroups[index], ...updates };
-              draft.isDirty = true;
-            }
-          }),
-
-        removeProductGroup: (id: string) =>
-          set((draft) => {
-            draft.productGroups = draft.productGroups.filter((g) => g.id !== id);
-
-            // Remove associated ranges and their products
-            const rangeIds = draft.relationships.groupToRanges[id] || [];
-            rangeIds.forEach((rangeId) => {
-              draft.productRanges = draft.productRanges.filter((r) => r.id !== rangeId);
-
-              // Remove associated products
-              const productIds = draft.relationships.rangeToProducts[rangeId] || [];
-              productIds.forEach((productId) => {
-                draft.products = draft.products.filter((p) => p.id !== productId);
-              });
-              delete draft.relationships.rangeToProducts[rangeId];
-            });
-
-            delete draft.relationships.groupToRanges[id];
-            draft.isDirty = true;
-          }),
-
-        // Product Range actions
-        addProductRange: (range: Omit<ProductRange, "id">) =>
-          set((draft) => {
-            const id = generateId(range.name);
-            const newRange: ProductRange = {
-              ...range,
-              id,
-              description: range.description || getDescriptionForRange(range.name),
-              tags: range.tags || getTagsForRange(range.name),
-            };
-
-            // Check if range already exists
-            const exists = draft.productRanges.some((r) => r.id === id);
-            if (!exists) {
-              draft.productRanges.push(newRange);
-              draft.relationships.rangeToProducts[id] = [];
-              draft.isDirty = true;
-            }
-          }),
-
-        updateProductRange: (id: string, updates: Partial<ProductRange>) =>
-          set((draft) => {
-            const index = draft.productRanges.findIndex((r) => r.id === id);
-            if (index !== -1) {
-              draft.productRanges[index] = { ...draft.productRanges[index], ...updates };
-              draft.isDirty = true;
-            }
-          }),
-
-        removeProductRange: (id: string) =>
-          set((draft) => {
-            draft.productRanges = draft.productRanges.filter((r) => r.id !== id);
-
-            // Remove associated products
-            const productIds = draft.relationships.rangeToProducts[id] || [];
-            productIds.forEach((productId) => {
-              draft.products = draft.products.filter((p) => p.id !== productId);
-            });
-
-            // Remove from group relationships
-            Object.keys(draft.relationships.groupToRanges).forEach((groupId) => {
-              draft.relationships.groupToRanges[groupId] = draft.relationships.groupToRanges[groupId].filter((rangeId) => rangeId !== id);
-            });
-
-            delete draft.relationships.rangeToProducts[id];
-            draft.isDirty = true;
-          }),
-
-        // Product actions
-        addProduct: (product: Omit<Product, "id">) =>
-          set((draft) => {
-            const id = generateId(product.code || product.name);
-            const newProduct: Product = {
-              ...product,
-              id,
-              code: product.code || generateId(product.name),
-            };
-
-            // Check if product already exists
-            const exists = draft.products.some((p) => p.id === id);
-            if (!exists) {
-              draft.products.push(newProduct);
-              draft.isDirty = true;
-            }
-          }),
-
-        updateProduct: (id: string, updates: Partial<Product>) =>
-          set((draft) => {
-            const index = draft.products.findIndex((p) => p.id === id);
-            if (index !== -1) {
-              draft.products[index] = { ...draft.products[index], ...updates };
-              draft.isDirty = true;
-            }
-          }),
-
-        removeProduct: (id: string) =>
-          set((draft) => {
-            draft.products = draft.products.filter((p) => p.id !== id);
-
-            // Remove from range relationships
-            Object.keys(draft.relationships.rangeToProducts).forEach((rangeId) => {
-              draft.relationships.rangeToProducts[rangeId] = draft.relationships.rangeToProducts[rangeId].filter(
-                (productId) => productId !== id
-              );
-            });
-
-            draft.isDirty = true;
-          }),
-
-        // Relationship actions
-        linkRangeToGroup: (groupId: string, rangeId: string) =>
-          set((draft) => {
-            if (!draft.relationships.groupToRanges[groupId]) {
-              draft.relationships.groupToRanges[groupId] = [];
-            }
-            if (!draft.relationships.groupToRanges[groupId].includes(rangeId)) {
-              draft.relationships.groupToRanges[groupId].push(rangeId);
-              draft.isDirty = true;
-            }
-          }),
-
-        unlinkRangeFromGroup: (groupId: string, rangeId: string) =>
-          set((draft) => {
-            if (draft.relationships.groupToRanges[groupId]) {
-              draft.relationships.groupToRanges[groupId] = draft.relationships.groupToRanges[groupId].filter((id) => id !== rangeId);
-              draft.isDirty = true;
-            }
-          }),
-
-        linkProductToRange: (rangeId: string, productId: string) =>
-          set((draft) => {
-            if (!draft.relationships.rangeToProducts[rangeId]) {
-              draft.relationships.rangeToProducts[rangeId] = [];
-            }
-            if (!draft.relationships.rangeToProducts[rangeId].includes(productId)) {
-              draft.relationships.rangeToProducts[rangeId].push(productId);
-              draft.isDirty = true;
-            }
-          }),
-
-        unlinkProductFromRange: (rangeId: string, productId: string) =>
-          set((draft) => {
-            if (draft.relationships.rangeToProducts[rangeId]) {
-              draft.relationships.rangeToProducts[rangeId] = draft.relationships.rangeToProducts[rangeId].filter((id) => id !== productId);
-              draft.isDirty = true;
-            }
-          }),
-
-        updateRelationships: (relationships: Relationships) =>
-          set((draft) => {
-            draft.relationships = relationships;
-            draft.isDirty = true;
-          }),
-
-        // Options and fields
-        updateOptions: (options: Record<string, string[]>) =>
-          set((draft) => {
-            if (draft.productData.stepperForm.steps[4]) {
-              draft.productData.stepperForm.steps[4].options = options;
-              draft.isDirty = true;
-            }
-          }),
-
-        updateContactFields: (fields: any[]) =>
-          set((draft) => {
-            if (draft.productData.stepperForm.steps[5]) {
-              draft.productData.stepperForm.steps[5].fields = fields;
-              draft.isDirty = true;
-            }
-          }),
-
-        // Persistence actions
-        saveData: async () => {
-          set((draft) => {
-            draft.isSaving = true;
-            draft.error = null;
+            draft.productData = windowData.stepperFormData;
           });
+        }
 
-          try {
-            const exportedData = get().exportData();
+        // Check if we have existing data builder data
+        if (
+          windowData.stepperDataBuilder &&
+          typeof windowData.stepperDataBuilder === "object" &&
+          windowData.stepperDataBuilder.productGroups &&
+          windowData.stepperDataBuilder.productGroups.length > 0
+        ) {
+          console.log("Loading existing data builder data:", windowData.stepperDataBuilder);
 
-            const response = await fetch("/wp-json/urbana/v1/product-data", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
-              },
-              body: JSON.stringify(exportedData),
-            });
-
-            if (!response.ok) {
-              throw new Error("Failed to save data");
-            }
-
-            set((draft) => {
-              draft.productData = exportedData;
-              draft.isDirty = false;
-              draft.lastSaved = new Date();
-            });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-            set((draft) => {
-              draft.error = errorMessage;
-            });
-            throw error;
-          } finally {
-            set((draft) => {
-              draft.isSaving = false;
-            });
-          }
-        },
-
-        loadData: async () => {
+          // Use the existing data builder information - DON'T extract from stepper form
           set((draft) => {
-            draft.isLoading = true;
-            draft.error = null;
-          });
-
-          try {
-            const response = await fetch("/wp-json/urbana/v1/product-data", {
-              method: "GET",
-              headers: {
-                "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
-              },
-            });
-
-            if (!response.ok) {
-              throw new Error("Failed to load data");
-            }
-
-            const data = await response.json();
-            get().initializeFromProductData(data);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-            set((draft) => {
-              draft.error = errorMessage;
-            });
-            throw error;
-          } finally {
-            set((draft) => {
-              draft.isLoading = false;
-            });
-          }
-        },
-
-        resetData: () =>
-          set((draft) => {
-            draft.productData = initialProductData;
-            draft.productGroups = [];
-            draft.productRanges = [];
-            draft.products = [];
-            draft.relationships = {
+            draft.productGroups = windowData.stepperDataBuilder.productGroups || [];
+            draft.productRanges = windowData.stepperDataBuilder.productRanges || [];
+            draft.products = windowData.stepperDataBuilder.products || [];
+            draft.relationships = windowData.stepperDataBuilder.relationships || {
               groupToRanges: {},
               rangeToProducts: {},
             };
+
+            if (windowData.stepperDataBuilder.lastSaved) {
+              draft.lastSaved = new Date(windowData.stepperDataBuilder.lastSaved);
+            }
+
             draft.isDirty = false;
-            draft.lastSaved = null;
-            draft.error = null;
-          }),
+          });
+        } else {
+          console.log("No existing data builder data found, extracting from stepper form data");
+          // Only extract from stepper form if no data builder data exists
+          if (windowData.stepperFormData) {
+            get().initializeFromProductData(windowData.stepperFormData);
+          }
+        }
+      },
 
-        importData: (data: ProductDataStructure) =>
-          set((draft) => {
-            draft.isDirty = true;
-            draft.lastSaved = null;
-            draft.error = null;
-            get().initializeFromProductData(data);
-          }),
+      // Fixed loadData implementation
+      loadData: async (stepperId?: number) => {
+        if (!stepperId) {
+          // Use data from window if no specific stepper ID requested
+          get().initializeFromWindowData();
+          return;
+        }
 
-        // Utility actions
-        setError: (error: string | null) =>
+        set((draft) => {
+          draft.isLoading = true;
+          draft.error = null;
+        });
+
+        try {
+          const response = await fetch(`/wp-json/urbana/v1/data-builder/${stepperId}`, {
+            method: "GET",
+            headers: {
+              "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to load data: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          // Set stepper form data
+          if (data.stepper_form_data) {
+            set((draft) => {
+              draft.productData = data.stepper_form_data;
+            });
+          }
+
+          // Check if we have data builder data with actual content
+          if (
+            data.stepper_data_builder &&
+            typeof data.stepper_data_builder === "object" &&
+            data.stepper_data_builder.productGroups &&
+            data.stepper_data_builder.productGroups.length > 0
+          ) {
+            console.log("Loading existing API data builder data:", data.stepper_data_builder);
+
+            set((draft) => {
+              draft.productGroups = data.stepper_data_builder.productGroups || [];
+              draft.productRanges = data.stepper_data_builder.productRanges || [];
+              draft.products = data.stepper_data_builder.products || [];
+              draft.relationships = data.stepper_data_builder.relationships || {
+                groupToRanges: {},
+                rangeToProducts: {},
+              };
+
+              if (data.stepper_data_builder.lastSaved) {
+                draft.lastSaved = new Date(data.stepper_data_builder.lastSaved);
+              }
+            });
+          } else {
+            console.log("No existing API data builder data found, extracting from stepper form data");
+            // Extract from stepper form if no data builder data exists
+            if (data.stepper_form_data) {
+              get().initializeFromProductData(data.stepper_form_data);
+            }
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+          console.error("Error loading data:", errorMessage);
           set((draft) => {
-            draft.error = error;
-          }),
-        clearError: () =>
+            draft.error = errorMessage;
+          });
+          throw error;
+        } finally {
           set((draft) => {
-            draft.error = null;
-          }),
-      })),
-      {
-        name: "urbana-data-builder-storage",
-        partialize: (state) => ({
-          productData: state.productData,
-          productGroups: state.productGroups,
-          productRanges: state.productRanges,
-          products: state.products,
-          relationships: state.relationships,
-          lastSaved: state.lastSaved,
+            draft.isLoading = false;
+          });
+        }
+      },
+
+      getRangesForGroup: (groupId: string) => {
+        const { productRanges, relationships } = get();
+        const rangeIds = relationships.groupToRanges[groupId] || [];
+        return productRanges.filter((range) => rangeIds.includes(range.id));
+      },
+
+      getProductsForRange: (rangeId: string) => {
+        const { products, relationships } = get();
+        const productIds = relationships.rangeToProducts[rangeId] || [];
+        return products.filter((product) => productIds.includes(product.id));
+      },
+
+      getProductById: (productId: string) => {
+        const { products } = get();
+        return products.find((product) => product.id === productId);
+      },
+
+      getGroupById: (groupId: string) => {
+        const { productGroups } = get();
+        return productGroups.find((group) => group.id === groupId);
+      },
+
+      getRangeById: (rangeId: string) => {
+        const { productRanges } = get();
+        return productRanges.find((range) => range.id === rangeId);
+      },
+
+      // Fixed saveData with proper return type
+      saveData: async () => {
+        set((draft) => {
+          draft.isSaving = true;
+          draft.error = null;
+        });
+
+        try {
+          const exportedData = get().exportData();
+          const { productGroups, productRanges, products, relationships } = get();
+
+          const response = await fetch("/wp-json/urbana/v1/product-data", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+            },
+            body: JSON.stringify({
+              stepper_form_data: exportedData,
+              stepper_data_builder: {
+                productGroups,
+                productRanges,
+                products,
+                relationships,
+                lastSaved: new Date().toISOString(),
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to save data: ${response.status} ${response.statusText}`);
+          }
+
+          const result = await response.json();
+
+          set((draft) => {
+            draft.productData = exportedData;
+            draft.isDirty = false;
+            draft.lastSaved = new Date();
+          });
+
+          console.log("Data saved successfully, stepper ID:", result.stepper_id);
+          return result.stepper_id;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+          console.error("Error saving data:", errorMessage);
+          set((draft) => {
+            draft.error = errorMessage;
+          });
+          throw error;
+        } finally {
+          set((draft) => {
+            draft.isSaving = false;
+          });
+        }
+      },
+
+      // ...rest of existing implementation remains the same...
+      initializeFromProductData: (data: ProductDataStructure) =>
+        set((draft) => {
+          draft.productData = data;
+
+          // Extract product groups
+          const groups = (data.stepperForm.steps[0].categories || []).map((name: string) => ({
+            id: generateId(name),
+            name,
+            icon: getDefaultIconForGroup(name),
+            description: getDescriptionForGroup(name),
+          }));
+          draft.productGroups = groups;
+
+          // Extract product ranges
+          const ranges: ProductRange[] = [];
+          Object.entries(data.stepperForm.steps[1].ranges || {}).forEach(([groupName, rangeNames]: [string, any]) => {
+            rangeNames.forEach((name: string) => {
+              ranges.push({
+                id: generateId(name),
+                name,
+                image: "",
+                description: getDescriptionForRange(name),
+                tags: getTagsForRange(name),
+              });
+            });
+          });
+          draft.productRanges = ranges;
+
+          // Extract products
+          const productsList: Product[] = [];
+          Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
+            productCodes.forEach((code: string) => {
+              const productDetails = data.stepperForm.steps[3].productDetails?.[code];
+              productsList.push({
+                id: generateId(code),
+                code,
+                name: productDetails?.name || `${code} Product`,
+                overview: productDetails?.overview || "",
+                description: productDetails?.description || "",
+                specifications: productDetails?.specifications || [],
+                imageGallery: productDetails?.imageGallery || [],
+                files: productDetails?.files || {},
+              });
+            });
+          });
+          draft.products = productsList;
+
+          // Extract relationships
+          const groupToRanges: Record<string, string[]> = {};
+          Object.entries(data.stepperForm.steps[1].ranges || {}).forEach(([groupName, rangeNames]: [string, any]) => {
+            const groupId = generateId(groupName);
+            groupToRanges[groupId] = (rangeNames as string[]).map((name) => generateId(name));
+          });
+
+          const rangeToProducts: Record<string, string[]> = {};
+          Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
+            const rangeId = generateId(rangeName);
+            rangeToProducts[rangeId] = (productCodes as string[]).map((code) => generateId(code));
+          });
+
+          draft.relationships = {
+            groupToRanges,
+            rangeToProducts,
+          };
         }),
-      }
-    ),
+
+      updateProductData: (data: ProductDataStructure) =>
+        set((draft) => {
+          draft.productData = data;
+          draft.isDirty = true;
+        }),
+
+      exportData: () => {
+        const { productGroups, productRanges, products, relationships, productData } = get();
+
+        const updatedData: ProductDataStructure = {
+          id: productData.id,
+          stepperForm: {
+            steps: [
+              {
+                step: 1,
+                title: "Select Product Group",
+                categories: productGroups.map((group) => group.name),
+              },
+              {
+                step: 2,
+                title: "Select Product Range",
+                ranges: (() => {
+                  const rangesObj: Record<string, string[]> = {};
+                  Object.entries(relationships.groupToRanges).forEach(([groupId, rangeIds]) => {
+                    const group = productGroups.find((g) => g.id === groupId);
+                    if (group) {
+                      rangesObj[group.name] = rangeIds
+                        .map((rangeId) => {
+                          const range = productRanges.find((r) => r.id === rangeId);
+                          return range ? range.name : "";
+                        })
+                        .filter((name) => name !== "");
+                    }
+                  });
+                  return rangesObj;
+                })(),
+              },
+              {
+                step: 3,
+                title: "Select Individual Product",
+                products: (() => {
+                  const productsObj: Record<string, string[]> = {};
+                  Object.entries(relationships.rangeToProducts).forEach(([rangeId, productIds]) => {
+                    const range = productRanges.find((r) => r.id === rangeId);
+                    if (range) {
+                      productsObj[range.name] = productIds
+                        .map((productId) => {
+                          const product = products.find((p) => p.id === productId);
+                          return product ? product.code : "";
+                        })
+                        .filter((code) => code !== "");
+                    }
+                  });
+                  return productsObj;
+                })(),
+              },
+              {
+                step: 4,
+                title: "View Product Content",
+                productDetails: (() => {
+                  const detailsObj: Record<string, ProductContent> = {};
+                  products.forEach((product) => {
+                    detailsObj[product.code] = {
+                      name: product.name,
+                      overview: product.overview,
+                      description: product.description,
+                      specifications: product.specifications,
+                      imageGallery: product.imageGallery,
+                      files: product.files,
+                    };
+                  });
+                  return detailsObj;
+                })(),
+              },
+              productData.stepperForm.steps[4] || {
+                step: 5,
+                title: "Configure Options",
+                options: {},
+              },
+              productData.stepperForm.steps[5] || {
+                step: 6,
+                title: "Contact Information",
+                fields: initialProductData.stepperForm.steps[5].fields,
+              },
+            ],
+          },
+        };
+
+        return updatedData;
+      },
+
+      // Product Group actions
+      addProductGroup: (group: Omit<ProductGroup, "id">) =>
+        set((draft) => {
+          const id = generateId(group.name);
+          const newGroup: ProductGroup = {
+            ...group,
+            id,
+            icon: group.icon || getDefaultIconForGroup(group.name),
+            description: group.description || getDescriptionForGroup(group.name),
+          };
+
+          // Check if group already exists
+          const exists = draft.productGroups.some((g) => g.id === id);
+          if (!exists) {
+            draft.productGroups.push(newGroup);
+            draft.relationships.groupToRanges[id] = [];
+            draft.isDirty = true;
+          }
+        }),
+
+      updateProductGroup: (id: string, updates: Partial<ProductGroup>) =>
+        set((draft) => {
+          const index = draft.productGroups.findIndex((g) => g.id === id);
+          if (index !== -1) {
+            draft.productGroups[index] = { ...draft.productGroups[index], ...updates };
+            draft.isDirty = true;
+          }
+        }),
+
+      removeProductGroup: (id: string) =>
+        set((draft) => {
+          draft.productGroups = draft.productGroups.filter((g) => g.id !== id);
+
+          // Remove associated ranges and their products
+          const rangeIds = draft.relationships.groupToRanges[id] || [];
+          rangeIds.forEach((rangeId) => {
+            draft.productRanges = draft.productRanges.filter((r) => r.id !== rangeId);
+
+            // Remove associated products
+            const productIds = draft.relationships.rangeToProducts[rangeId] || [];
+            productIds.forEach((productId) => {
+              draft.products = draft.products.filter((p) => p.id !== productId);
+            });
+            delete draft.relationships.rangeToProducts[rangeId];
+          });
+
+          delete draft.relationships.groupToRanges[id];
+          draft.isDirty = true;
+        }),
+
+      // Product Range actions
+      addProductRange: (range: Omit<ProductRange, "id">) =>
+        set((draft) => {
+          const id = generateId(range.name);
+          const newRange: ProductRange = {
+            ...range,
+            id,
+            description: range.description || getDescriptionForRange(range.name),
+            tags: range.tags || getTagsForRange(range.name),
+          };
+
+          // Check if range already exists
+          const exists = draft.productRanges.some((r) => r.id === id);
+          if (!exists) {
+            draft.productRanges.push(newRange);
+            draft.relationships.rangeToProducts[id] = [];
+            draft.isDirty = true;
+          }
+        }),
+
+      updateProductRange: (id: string, updates: Partial<ProductRange>) =>
+        set((draft) => {
+          const index = draft.productRanges.findIndex((r) => r.id === id);
+          if (index !== -1) {
+            draft.productRanges[index] = { ...draft.productRanges[index], ...updates };
+            draft.isDirty = true;
+          }
+        }),
+
+      removeProductRange: (id: string) =>
+        set((draft) => {
+          draft.productRanges = draft.productRanges.filter((r) => r.id !== id);
+
+          // Remove associated products
+          const productIds = draft.relationships.rangeToProducts[id] || [];
+          productIds.forEach((productId) => {
+            draft.products = draft.products.filter((p) => p.id !== productId);
+          });
+
+          // Remove from group relationships
+          Object.keys(draft.relationships.groupToRanges).forEach((groupId) => {
+            draft.relationships.groupToRanges[groupId] = draft.relationships.groupToRanges[groupId].filter((rangeId) => rangeId !== id);
+          });
+
+          delete draft.relationships.rangeToProducts[id];
+          draft.isDirty = true;
+        }),
+
+      // Product actions
+      addProduct: (product: Omit<Product, "id">) =>
+        set((draft) => {
+          const id = generateId(product.code || product.name);
+          const newProduct: Product = {
+            ...product,
+            id,
+            code: product.code || generateId(product.name),
+          };
+
+          // Check if product already exists
+          const exists = draft.products.some((p) => p.id === id);
+          if (!exists) {
+            draft.products.push(newProduct);
+            draft.isDirty = true;
+          }
+        }),
+
+      updateProduct: (id: string, updates: Partial<Product>) =>
+        set((draft) => {
+          const index = draft.products.findIndex((p) => p.id === id);
+          if (index !== -1) {
+            draft.products[index] = { ...draft.products[index], ...updates };
+            draft.isDirty = true;
+          }
+        }),
+
+      removeProduct: (id: string) =>
+        set((draft) => {
+          draft.products = draft.products.filter((p) => p.id !== id);
+
+          // Remove from range relationships
+          Object.keys(draft.relationships.rangeToProducts).forEach((rangeId) => {
+            draft.relationships.rangeToProducts[rangeId] = draft.relationships.rangeToProducts[rangeId].filter(
+              (productId) => productId !== id
+            );
+          });
+
+          draft.isDirty = true;
+        }),
+
+      // Relationship actions
+      linkRangeToGroup: (groupId: string, rangeId: string) =>
+        set((draft) => {
+          if (!draft.relationships.groupToRanges[groupId]) {
+            draft.relationships.groupToRanges[groupId] = [];
+          }
+          if (!draft.relationships.groupToRanges[groupId].includes(rangeId)) {
+            draft.relationships.groupToRanges[groupId].push(rangeId);
+            draft.isDirty = true;
+          }
+        }),
+
+      unlinkRangeFromGroup: (groupId: string, rangeId: string) =>
+        set((draft) => {
+          if (draft.relationships.groupToRanges[groupId]) {
+            draft.relationships.groupToRanges[groupId] = draft.relationships.groupToRanges[groupId].filter((id) => id !== rangeId);
+            draft.isDirty = true;
+          }
+        }),
+
+      linkProductToRange: (rangeId: string, productId: string) =>
+        set((draft) => {
+          if (!draft.relationships.rangeToProducts[rangeId]) {
+            draft.relationships.rangeToProducts[rangeId] = [];
+          }
+          if (!draft.relationships.rangeToProducts[rangeId].includes(productId)) {
+            draft.relationships.rangeToProducts[rangeId].push(productId);
+            draft.isDirty = true;
+          }
+        }),
+
+      unlinkProductFromRange: (rangeId: string, productId: string) =>
+        set((draft) => {
+          if (draft.relationships.rangeToProducts[rangeId]) {
+            draft.relationships.rangeToProducts[rangeId] = draft.relationships.rangeToProducts[rangeId].filter((id) => id !== productId);
+            draft.isDirty = true;
+          }
+        }),
+
+      updateRelationships: (relationships: Relationships) =>
+        set((draft) => {
+          draft.relationships = relationships;
+          draft.isDirty = true;
+        }),
+
+      // Options and fields
+      updateOptions: (options: Record<string, string[]>) =>
+        set((draft) => {
+          if (draft.productData.stepperForm.steps[4]) {
+            draft.productData.stepperForm.steps[4].options = options;
+            draft.isDirty = true;
+          }
+        }),
+
+      updateContactFields: (fields: any[]) =>
+        set((draft) => {
+          if (draft.productData.stepperForm.steps[5]) {
+            draft.productData.stepperForm.steps[5].fields = fields;
+            draft.isDirty = true;
+          }
+        }),
+
+      resetData: () =>
+        set((draft) => {
+          draft.productData = initialProductData;
+          draft.productGroups = [];
+          draft.productRanges = [];
+          draft.products = [];
+          draft.relationships = {
+            groupToRanges: {},
+            rangeToProducts: {},
+          };
+          draft.isDirty = false;
+          draft.lastSaved = null;
+          draft.error = null;
+        }),
+
+      importData: (data: ProductDataStructure) =>
+        set((draft) => {
+          draft.isDirty = true;
+          draft.lastSaved = null;
+          draft.error = null;
+          get().initializeFromProductData(data);
+        }),
+
+      // Utility actions
+      setError: (error: string | null) =>
+        set((draft) => {
+          draft.error = error;
+        }),
+      clearError: () =>
+        set((draft) => {
+          draft.error = null;
+        }),
+    })),
     { name: "urbana-data-builder" }
   )
 );

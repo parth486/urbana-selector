@@ -15,7 +15,19 @@ export interface ProductSelections {
   };
 }
 
+interface ProductData {
+  id: number;
+  stepperForm: {
+    steps: Array<{
+      step: number;
+      title: string;
+      [key: string]: any;
+    }>;
+  };
+}
+
 interface StepperState {
+  productData: ProductData | null;
   currentStep: number;
   selections: ProductSelections;
   isSubmitting: boolean;
@@ -23,6 +35,7 @@ interface StepperState {
 
   // Actions
   setCurrentStep: (step: number) => void;
+  setProductData: (data: ProductData) => void;
   updateSelection: (key: keyof ProductSelections, value: any) => void;
   nextStep: () => void;
   previousStep: () => void;
@@ -31,6 +44,7 @@ interface StepperState {
   setSubmitted: (submitted: boolean) => void;
   resetStepper: () => void;
   canProceedToStep: (step: number) => boolean;
+  initializeProductData: () => void;
 }
 
 const initialSelections: ProductSelections = {
@@ -51,10 +65,29 @@ export const useStepperStore = create<StepperState>()(
   devtools(
     persist(
       (set, get) => ({
+        productData: null,
         currentStep: 1,
         selections: initialSelections,
         isSubmitting: false,
         isSubmitted: false,
+
+        initializeProductData: () => {
+          const windowData = (window as any).urbanaPublic;
+
+          if (windowData?.productData) {
+            console.log("Initializing stepper with database product data");
+            set({
+              productData: windowData.productData,
+            });
+          } else {
+            console.warn("No database product data found in window.urbanaPublic");
+          }
+        },
+
+        // Set product data directly
+        setProductData: (data: ProductData) => {
+          set({ productData: data });
+        },
 
         setCurrentStep: (step) => set({ currentStep: step }),
 
@@ -91,10 +124,16 @@ export const useStepperStore = create<StepperState>()(
             currentStep: Math.max(state.currentStep - 1, 1),
           })),
 
-        goToStep: (step) => {
-          const { selections } = get();
+        goToStep: (step: number) => {
+          const { selections, productData } = get();
+          const maxSteps = productData?.stepperForm?.steps?.length || 6;
 
-          // Only allow navigation to steps that are accessible based on selections
+          // Validate step number
+          if (step < 1 || step > maxSteps) {
+            return false;
+          }
+
+          // Check if step is accessible based on selections
           if (
             step === 1 ||
             (step === 2 && selections.productGroup) ||
@@ -104,9 +143,9 @@ export const useStepperStore = create<StepperState>()(
             set({ currentStep: step });
             return true;
           }
+
           return false;
         },
-
         setSubmitting: (submitting) => set({ isSubmitting: submitting }),
         setSubmitted: (submitted) => set({ isSubmitted: submitted }),
 
@@ -118,8 +157,12 @@ export const useStepperStore = create<StepperState>()(
             isSubmitted: false,
           }),
 
-        canProceedToStep: (step) => {
-          const { selections } = get();
+        // Check if can proceed to a specific step
+        canProceedToStep: (step: number) => {
+          const { selections, productData } = get();
+          const maxSteps = productData?.stepperForm?.steps?.length || 6;
+
+          if (step > maxSteps) return false;
 
           switch (step) {
             case 1:

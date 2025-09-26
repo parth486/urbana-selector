@@ -4,7 +4,8 @@ namespace Urbana\Frontend;
 class FrontendInit {
 
 	public function __construct() {
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_public_scripts' ) );
+		// add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_public_scripts' ) );
+		// add_action( 'wp_enqueue_scripts', array( $this, 'register_public_scripts' ) );
 		add_shortcode( 'urbana_product_stepper', array( $this, 'render_stepper_shortcode' ) );
 		add_action( 'wp_footer', array( $this, 'add_stepper_root_div' ) );
 	}
@@ -13,18 +14,18 @@ class FrontendInit {
 		// Only enqueue on pages that have the shortcode or specific conditions
 		global $post;
 		if ( is_a( $post, 'WP_Post' ) && has_shortcode( $post->post_content, 'urbana_product_stepper' ) ) {
-			$this->load_stepper_assets();
+			$this->load_stepper_assets( 1 );
 		}
 	}
 
-	private function load_stepper_assets() {
+	private function load_stepper_assets( $id ) {
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
 
 		if ( file_exists( $asset_file . 'stepper-app.js' ) ) {
 			wp_enqueue_script(
 				'urbana-stepper-app',
 				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.js',
-				array( 'wp-element' ),
+				array(),
 				URBANA_VERSION,
 				true
 			);
@@ -49,13 +50,35 @@ class FrontendInit {
 				URBANA_VERSION
 			);
 
-			// Get product data from database or use default
+			// Get product data and data builder information from database
 			$db_manager   = new \Urbana\Database\DatabaseManager();
-			$product_data = $db_manager->get_product_data();
+			$product_data = $db_manager->get_product_data( 'stepper_form_data' );
+
+			// Get data builder information for detailed product data
+			$builder_key  = 'stepper_data_builder_' . $id;
+			$builder_data = $db_manager->get_product_data( null, $builder_key );
 
 			if ( ! $product_data ) {
 				// Fallback to default data file if database is empty
 				$product_data = $this->get_default_product_data();
+			}
+
+			// Enhance product data with builder information
+			if ( $builder_data && isset( $builder_data['productGroups'] ) ) {
+				// Add product groups data to the stepper form data
+				if ( ! isset( $product_data['stepperForm']['steps'][0]['productGroups'] ) ) {
+					$product_data['stepperForm']['steps'][0]['productGroups'] = $builder_data['productGroups'];
+				}
+
+				// Add product ranges data
+				if ( ! isset( $product_data['stepperForm']['steps'][1]['productRanges'] ) ) {
+					$product_data['stepperForm']['steps'][1]['productRanges'] = $builder_data['productRanges'];
+				}
+
+				// Add products data
+				if ( ! isset( $product_data['stepperForm']['steps'][2]['productsData'] ) ) {
+					$product_data['stepperForm']['steps'][2]['productsData'] = $builder_data['products'];
+				}
 			}
 
 			// Localize script for API calls and data
@@ -66,6 +89,7 @@ class FrontendInit {
 					'apiUrl'      => rest_url( 'urbana/v1/' ),
 					'nonce'       => wp_create_nonce( 'wp_rest' ),
 					'productData' => $product_data,
+					'stepperId'   => $id,
 					'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
 				)
 			);
@@ -77,12 +101,13 @@ class FrontendInit {
 			array(
 				'theme'           => 'default',
 				'container_class' => '',
+				'id'              => '1',
 			),
 			$atts
 		);
 
 		// Enqueue assets if not already done
-		$this->load_stepper_assets();
+		$this->load_stepper_assets( $atts['id'] );
 
 		$container_class = ! empty( $atts['container_class'] ) ? ' ' . esc_attr( $atts['container_class'] ) : '';
 
@@ -100,6 +125,7 @@ class FrontendInit {
 	private function get_default_product_data() {
 		// Return basic default data structure
 		return array(
+			'id'          => 1,
 			'stepperForm' => array(
 				'steps' => array(
 					array(

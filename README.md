@@ -115,9 +115,20 @@ urbana/
 
 Each app uses Zustand for state management:
 
-- **Stepper**: `useStepperStore` - Manages form progress and selections
+- **Stepper**: `useStepperStore` - Manages form progress and selections with persistence
 - **Data Builder**: `useDataBuilderStore` - Manages product data CRUD
 - **Admin Orders**: `useAdminOrdersStore` - Manages submissions and filters
+
+#### Persistence
+
+The stepper form uses Zustand's persist middleware to automatically save user selections and current step progress to localStorage. This ensures that:
+
+- User selections are preserved when navigating between pages
+- Form progress is maintained after browser refresh
+- Users can close and return to the form without losing their work
+- The form state persists across browser sessions
+
+The persisted data includes the current step and all user selections (product group, range, individual product, options, and contact information).
 
 ### API Endpoints
 

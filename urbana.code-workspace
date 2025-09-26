@@ -3,9 +3,6 @@
 		{
 			"name": "urbana",
 			"path": "."
-		},
-		{
-			"path": "../../../../../../elementor/app/public/wp-content/plugins/spider-orders-hub"
 		}
 	],
 	"settings": {}

@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useState } from "react";
 import { Tabs, Tab, Card, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { ProductGroupsManager } from "./ProductGroupsManager";
@@ -9,7 +9,55 @@ import { DataPreview } from "./DataPreview";
 import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
 
 export const DataBuilder: React.FC = () => {
-  const { productGroups, productRanges, products, relationships, exportData, importData, error } = useDataBuilderStore();
+  const {
+    productGroups,
+    productRanges,
+    products,
+    relationships,
+    exportData,
+    importData,
+    error,
+    productData,
+    loadData,
+    saveData,
+    isLoading,
+    initializeFromWindowData,
+  } = useDataBuilderStore();
+
+  const [currentStepperId, setCurrentStepperId] = useState<number | null>(null);
+
+  // Initialize data from window on component mount
+  useEffect(() => {
+    const windowData = (window as any).urbanaAdmin;
+
+    if (windowData) {
+      // Initialize from window data
+      initializeFromWindowData();
+      setCurrentStepperId(windowData.stepperId || 1);
+    }
+  }, [initializeFromWindowData]);
+
+  const handleSaveData = async () => {
+    try {
+      const stepperId = await saveData();
+      if (stepperId) {
+        setCurrentStepperId(stepperId);
+      }
+    } catch (error) {
+      console.error("Failed to save data:", error);
+    }
+  };
+
+  const handleLoadDataBuilder = async (stepperId: number) => {
+    try {
+      // Redirect to current page with stepper_id parameter
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set("stepper_id", stepperId.toString());
+      window.location.href = currentUrl.toString();
+    } catch (error) {
+      console.error("Failed to load data builder:", error);
+    }
+  };
 
   const handleExportData = () => {
     const data = exportData();
@@ -45,10 +93,23 @@ export const DataBuilder: React.FC = () => {
     <div className="max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Data Management ()</h2>
+          <h2 className="text-2xl font-semibold text-foreground">
+            Data Management
+            {currentStepperId && <span className="text-sm text-foreground-500 ml-2">(Stepper ID: {currentStepperId})</span>}
+          </h2>
           <p className="text-sm text-foreground-500 mt-1">Manage product groups, ranges, products, and their relationships</p>
         </div>
         <div className="flex gap-2">
+          {/* Save Button */}
+          <Button
+            color="success"
+            variant="flat"
+            onPress={handleSaveData}
+            isLoading={isLoading}
+            startContent={<Icon icon="lucide:save" width={18} />}
+          >
+            Save Data
+          </Button>
           <Button color="primary" variant="flat" onPress={handleExportData} startContent={<Icon icon="lucide:download" width={18} />}>
             Export Data
           </Button>
@@ -60,6 +121,41 @@ export const DataBuilder: React.FC = () => {
           </label>
         </div>
       </div>
+
+      {/* Add Stepper ID Selector */}
+      <Card className="p-4 mb-6">
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium">Switch to Stepper ID:</span>
+          <input
+            type="number"
+            min="1"
+            className="px-3 py-2 border rounded-md w-20"
+            placeholder="ID"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const id = parseInt((e.target as HTMLInputElement).value);
+                if (id > 0) {
+                  handleLoadDataBuilder(id);
+                }
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            color="primary"
+            variant="flat"
+            onPress={() => {
+              const input = document.querySelector('input[type="number"]') as HTMLInputElement;
+              const id = parseInt(input.value);
+              if (id > 0) {
+                handleLoadDataBuilder(id);
+              }
+            }}
+          >
+            Switch
+          </Button>
+        </div>
+      </Card>
 
       <Card className="p-0">
         <Tabs aria-label="Data Builder Tabs" fullWidth classNames={{ tabList: "gap-0" }}>

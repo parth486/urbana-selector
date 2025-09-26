@@ -2,9 +2,18 @@ import React from "react";
 import { Card, CardBody, Image } from "@heroui/react";
 import { motion } from "framer-motion";
 
+interface ProductRange {
+  id: string;
+  name: string;
+  image: string;
+  description: string;
+  tags: string[];
+}
+
 interface Step2Props {
   data: {
     ranges: Record<string, string[]>;
+    productRanges?: ProductRange[]; // Add product ranges data
   };
   productGroup: string;
   selection: string | null;
@@ -13,6 +22,25 @@ interface Step2Props {
 
 export const Step2ProductRange: React.FC<Step2Props> = ({ data, productGroup, selection, onSelect }) => {
   const ranges = data.ranges[productGroup] || [];
+
+  // Get product range data from database or fallback to hardcoded
+  const getProductRangeData = (rangeName: string): ProductRange => {
+    if (data.productRanges) {
+      const foundRange = data.productRanges.find((range) => range.name === rangeName);
+      if (foundRange) {
+        return foundRange;
+      }
+    }
+
+    // Fallback to default data if not found in database
+    return {
+      id: rangeName.toLowerCase().replace(/\s+/g, "-"),
+      name: rangeName,
+      image: "",
+      description: getDefaultRangeDescription(rangeName, productGroup),
+      tags: getDefaultFeatureTags(rangeName, productGroup),
+    };
+  };
 
   // Animation variants
   const container = {
@@ -35,47 +63,50 @@ export const Step2ProductRange: React.FC<Step2Props> = ({ data, productGroup, se
       <p className="text-default-600 mb-6">Select a product range from the {productGroup} category:</p>
 
       <motion.div className="grid grid-cols-1 sm:grid-cols-2 gap-4" variants={container} initial="hidden" animate="show">
-        {ranges.map((range, index) => (
-          <motion.div key={range} variants={item}>
-            <Card
-              isPressable
-              onPress={() => onSelect(range)}
-              className={`transition-all duration-200 ${
-                selection === range ? "border-2 border-primary shadow-md" : "border border-default-200 hover:border-primary hover:shadow-sm"
-              }`}
-            >
-              <CardBody className="p-0">
-                <div className="flex flex-col sm:flex-row">
-                  <div className="w-full sm:w-1/3 h-40">
-                    <Image
-                      removeWrapper
-                      alt={`${range} product range`}
-                      className="w-full h-full object-cover"
-                      src={`https://img.heroui.chat/image/${getImageCategory(productGroup)}?w=300&h=300&u=${productGroup}_${index}`}
-                    />
-                  </div>
-                  <div className="p-4 flex-1">
-                    <h3 className="text-lg font-medium">{range}</h3>
-                    <p className="text-default-500 text-sm mt-2">{getRangeDescription(range, productGroup)}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {getFeatureTags(range, productGroup).map((tag) => (
-                        <span key={tag} className="text-xs px-2 py-1 bg-default-100 text-default-700 rounded-medium">
-                          {tag}
-                        </span>
-                      ))}
+        {ranges.map((range, index) => {
+          const rangeData = getProductRangeData(range);
+          const imageUrl =
+            rangeData.image || `https://img.heroui.chat/image/${getImageCategory(productGroup)}?w=300&h=300&u=${productGroup}_${index}`;
+
+          return (
+            <motion.div key={range} variants={item}>
+              <Card
+                isPressable
+                onPress={() => onSelect(range)}
+                className={`transition-all duration-200 ${
+                  selection === range
+                    ? "border-2 border-primary shadow-md"
+                    : "border border-default-200 hover:border-primary hover:shadow-sm"
+                }`}
+              >
+                <CardBody className="p-0">
+                  <div className="flex flex-col sm:flex-row">
+                    <div className="w-full sm:w-1/3 h-40">
+                      <Image removeWrapper alt={`${range} product range`} className="w-full h-full object-cover" src={imageUrl} />
+                    </div>
+                    <div className="p-4 flex-1">
+                      <h3 className="text-lg font-medium">{range}</h3>
+                      <p className="text-default-500 text-sm mt-2">{rangeData.description}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {rangeData.tags.map((tag) => (
+                          <span key={tag} className="text-xs px-2 py-1 bg-default-100 text-default-700 rounded-medium">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardBody>
-            </Card>
-          </motion.div>
-        ))}
+                </CardBody>
+              </Card>
+            </motion.div>
+          );
+        })}
       </motion.div>
     </div>
   );
 };
 
-// Helper functions
+// Helper functions - keep as fallbacks
 function getImageCategory(productGroup: string): string {
   const mapping: Record<string, string> = {
     Shelter: "landscape",
@@ -89,7 +120,7 @@ function getImageCategory(productGroup: string): string {
   return mapping[productGroup] || "places";
 }
 
-function getRangeDescription(range: string, productGroup: string): string {
+function getDefaultRangeDescription(range: string, productGroup: string): string {
   const descriptions: Record<string, string> = {
     // Shelter ranges
     Peninsula: "Modern shelters with excellent weather protection for parks and urban settings",
@@ -137,7 +168,7 @@ function getRangeDescription(range: string, productGroup: string): string {
   return descriptions[range] || `${range} product range for ${productGroup}`;
 }
 
-function getFeatureTags(range: string, productGroup: string): string[] {
+function getDefaultFeatureTags(range: string, productGroup: string): string[] {
   const allTags: Record<string, string[]> = {
     // Shelter ranges
     Peninsula: ["Modern", "Weather-resistant", "Versatile"],

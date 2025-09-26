@@ -265,13 +265,32 @@ class RestAPI {
 	public function update_product_data( $request ) {
 		$data = $request->get_json_params();
 
-		$result = $this->db_manager->update_product_data( 'stepper_form_data', $data );
+		// Save stepper form data first
+		if ( isset( $data['stepper_form_data'] ) ) {
+			$stepper_result = $this->db_manager->update_product_data( 'stepper_form_data', $data['stepper_form_data'] );
+			if ( $stepper_result === false ) {
+				return new \WP_Error( 'save_failed', 'Failed to save stepper form data', array( 'status' => 500 ) );
+			}
 
-		if ( $result === false ) {
-			return new \WP_Error( 'update_failed', 'Failed to update product data', array( 'status' => 500 ) );
+			// Get the ID from the stepper form data save operation
+			$stepper_id = $this->db_manager->get_last_insert_id();
+
+			// Save data builder information with the ID from stepper form data
+			if ( isset( $data['stepper_data_builder'] ) && $stepper_id ) {
+				$builder_key    = 'stepper_data_builder_' . $stepper_id;
+				$builder_result = $this->db_manager->update_product_data( $builder_key, $data['stepper_data_builder'] );
+				if ( $builder_result === false ) {
+					return new \WP_Error( 'save_failed', 'Failed to save data builder information', array( 'status' => 500 ) );
+				}
+			}
 		}
 
-		return new \WP_REST_Response( array( 'success' => true ) );
+		return new \WP_REST_Response(
+			array(
+				'success'    => true,
+				'stepper_id' => $stepper_id ?? null,
+			)
+		);
 	}
 
 	public function check_admin_permission() {

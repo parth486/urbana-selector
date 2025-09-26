@@ -57,48 +57,94 @@ class DatabaseManager {
 	}
 
 	private function insert_default_product_data() {
-		$existing = $this->wpdb->get_var(
-			$this->wpdb->prepare(
-				"SELECT COUNT(*) FROM {$this->table_prefix}product_data WHERE data_key = %s",
-				'stepper_form_data'
-			)
-		);
+			$existing = $this->wpdb->get_var(
+				$this->wpdb->prepare(
+					"SELECT COUNT(*) FROM {$this->table_prefix}product_data WHERE data_key = %s",
+					'stepper_form_data'
+				)
+			);
 
 		if ( $existing == 0 ) {
-			// Get the default product data from the JSON file
-			$default_data_file = URBANA_PLUGIN_PATH . 'src/data/productData.ts';
-			if ( file_exists( $default_data_file ) ) {
-				// For now, we'll use a simplified version
-				// In production, you'd want to parse the TS file or have a separate JSON file
-				$default_data = array(
-					'stepperForm' => array(
-						'steps' => array(
-							array(
-								'step'       => 1,
-								'title'      => 'Select Product Group',
-								'categories' => array( 'Shelter', 'Toilet', 'Bridge', 'Access', 'Seating', 'Lighting' ),
+			$default_data = array(
+				'id'          => 1, // Add ID to the structure
+				'stepperForm' => array(
+					'steps' => array(
+						array(
+							'step'       => 1,
+							'title'      => 'Select Product Group',
+							'categories' => array( 'Shelter', 'Toilet', 'Bridge', 'Access', 'Seating', 'Lighting' ),
+						),
+						array(
+							'step'   => 2,
+							'title'  => 'Select Product Range',
+							'ranges' => array(
+								'Shelter' => array( 'Peninsula', 'Whyalla', 'Coastal', 'Urban', 'Heritage' ),
+								'Toilet'  => array( 'EcoSan', 'Standard', 'Accessible', 'Premium', 'Compact' ),
 							),
-							array(
-								'step'   => 2,
-								'title'  => 'Select Product Range',
-								'ranges' => array(
-									'Shelter' => array( 'Peninsula', 'Whyalla', 'Coastal', 'Urban', 'Heritage' ),
-									'Toilet'  => array( 'EcoSan', 'Standard', 'Accessible', 'Premium', 'Compact' ),
+						),
+						array(
+							'step'     => 3,
+							'title'    => 'Select Individual Product',
+							'products' => array(),
+						),
+						array(
+							'step'           => 4,
+							'title'          => 'View Product Content',
+							'productDetails' => array(),
+						),
+						array(
+							'step'    => 5,
+							'title'   => 'Configure Options',
+							'options' => array(),
+						),
+						array(
+							'step'   => 6,
+							'title'  => 'Contact Information',
+							'fields' => array(
+								array(
+									'name'     => 'fullName',
+									'label'    => 'Full Name',
+									'type'     => 'text',
+									'required' => true,
+								),
+								array(
+									'name'     => 'email',
+									'label'    => 'Email Address',
+									'type'     => 'email',
+									'required' => true,
+								),
+								array(
+									'name'     => 'phone',
+									'label'    => 'Phone Number',
+									'type'     => 'tel',
+									'required' => false,
+								),
+								array(
+									'name'     => 'company',
+									'label'    => 'Company/Organization',
+									'type'     => 'text',
+									'required' => false,
+								),
+								array(
+									'name'     => 'message',
+									'label'    => 'Additional Notes',
+									'type'     => 'textarea',
+									'required' => false,
 								),
 							),
 						),
 					),
-				);
+				),
+			);
 
-				$this->wpdb->insert(
-					$this->table_prefix . 'product_data',
-					array(
-						'data_key'   => 'stepper_form_data',
-						'data_value' => json_encode( $default_data ),
-					),
-					array( '%s', '%s' )
-				);
-			}
+			$this->wpdb->insert(
+				$this->table_prefix . 'product_data',
+				array(
+					'data_key'   => 'stepper_form_data',
+					'data_value' => json_encode( $default_data ),
+				),
+				array( '%s', '%s' )
+			);
 		}
 	}
 
@@ -174,25 +220,86 @@ class DatabaseManager {
 		);
 	}
 
-	public function get_product_data( $key = 'stepper_form_data' ) {
+	public function get_product_data_first_id( $key = 'stepper_form_data' ) {
 		$result = $this->wpdb->get_var(
 			$this->wpdb->prepare(
-				"SELECT data_value FROM {$this->table_prefix}product_data WHERE data_key = %s",
+				"SELECT id FROM {$this->table_prefix}product_data WHERE data_key = %s ORDER BY id ASC LIMIT 1",
 				$key
 			)
 		);
+
+		return $result ? absint( $result ) : null;
+	}
+
+	public function get_product_data( $id = 1, $key = 'stepper_form_data' ) {
+
+		if ( 'stepper_form_data' !== $key ) {
+			$result = $this->wpdb->get_var(
+				$this->wpdb->prepare(
+					"SELECT data_value FROM {$this->table_prefix}product_data WHERE data_key = %s",
+					$key
+				)
+			);
+			return $result ? json_decode( $result, true ) : null;
+		}
+		if ( ! $id || ! is_numeric( $id ) ) {
+			$result = $this->wpdb->get_var(
+				$this->wpdb->prepare(
+					"SELECT data_value FROM {$this->table_prefix}product_data WHERE data_key = %s",
+					$key
+				)
+			);
+		} else {
+			$result = $this->wpdb->get_var(
+				$this->wpdb->prepare(
+					"SELECT data_value FROM {$this->table_prefix}product_data WHERE id = %d AND data_key = %s",
+					absint( $id ),
+					$key
+				)
+			);
+		}
 
 		return $result ? json_decode( $result, true ) : null;
 	}
 
 	public function update_product_data( $key, $data ) {
-		return $this->wpdb->replace(
-			$this->table_prefix . 'product_data',
-			array(
-				'data_key'   => $key,
-				'data_value' => json_encode( $data ),
-			),
-			array( '%s', '%s' )
+		// Check if record exists
+		$existing = $this->wpdb->get_var(
+			$this->wpdb->prepare(
+				"SELECT id FROM {$this->table_prefix}product_data WHERE data_key = %s",
+				$key
+			)
 		);
+
+		if ( $existing ) {
+			// Update existing record
+			$result = $this->wpdb->update(
+				$this->table_prefix . 'product_data',
+				array(
+					'data_value' => json_encode( $data ),
+				),
+				array( 'data_key' => $key ),
+				array( '%s' ),
+				array( '%s' )
+			);
+
+			// Set the insert_id to the existing ID for consistency
+			$this->wpdb->insert_id = $existing;
+			return $result;
+		} else {
+			// Insert new record
+			return $this->wpdb->insert(
+				$this->table_prefix . 'product_data',
+				array(
+					'data_key'   => $key,
+					'data_value' => json_encode( $data ),
+				),
+				array( '%s', '%s' )
+			);
+		}
+	}
+
+	public function get_last_insert_id() {
+		return $this->wpdb->insert_id;
 	}
 }

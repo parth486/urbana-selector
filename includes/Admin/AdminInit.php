@@ -77,7 +77,7 @@ class AdminInit {
 		if ( strpos( $hook, 'urbana-' ) === false ) {
 			return;
 		}
-
+		global $wpdb;
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
 
 		// Data Builder App
@@ -111,14 +111,24 @@ class AdminInit {
 					URBANA_VERSION
 				);
 
+				// Get data from database
+				$db_manager   = new \Urbana\Database\DatabaseManager();
+				$stepper_id   = $db_manager->get_product_data_first_id();
+				$stepper_data = $db_manager->get_product_data( $stepper_id, 'stepper_form_data' );
+				$builder_key  = 'stepper_data_builder_' . $stepper_id;
+				$builder_data = $db_manager->get_product_data( null, $builder_key );
+
 				// Localize script for API calls
 				wp_localize_script(
 					'urbana-data-builder',
 					'urbanaAdmin',
 					array(
-						'apiUrl'  => rest_url( 'urbana/v1/' ),
-						'nonce'   => wp_create_nonce( 'wp_rest' ),
-						'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+						'apiUrl'             => rest_url( 'urbana/v1/' ),
+						'nonce'              => wp_create_nonce( 'wp_rest' ),
+						'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
+						'stepperId'          => $stepper_id,
+						'stepperFormData'    => $stepper_data ?: array(),
+						'stepperDataBuilder' => $builder_data ?: array(),
 					)
 				);
 			}

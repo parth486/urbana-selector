@@ -63,17 +63,14 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
 
   const handleGoToStep = (step: number) => {
     goToStep(step);
-    window.scrollTo(0, 0);
   };
 
   const handleNext = () => {
     nextStep();
-    window.scrollTo(0, 0);
   };
 
   const handlePrevious = () => {
     previousStep();
-    window.scrollTo(0, 0);
   };
 
   // Memoize the renderStep function to prevent unnecessary re-renders
@@ -86,6 +83,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step1ProductGroup
             data={{
               categories: stepData?.categories || [],
+              productGroups: stepData?.productGroups || [], // Pass the enhanced data
             }}
             selection={selections.productGroup || null}
             onSelect={(value) => updateSelection("productGroup", value)}
@@ -96,6 +94,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step2ProductRange
             data={{
               ranges: stepData?.ranges || {},
+              productRanges: stepData?.productRanges || [], // Pass the enhanced data
             }}
             productGroup={selections.productGroup || ""}
             selection={selections.productRange || null}
@@ -107,6 +106,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step3IndividualProduct
             data={{
               products: stepData?.products || {},
+              productsData: stepData?.productsData || [], // Pass the enhanced data
             }}
             productRange={selections.productRange || ""}
             selection={selections.individualProduct || null}

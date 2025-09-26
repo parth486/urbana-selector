@@ -2,28 +2,28 @@ import React from "react";
 import { Button, Spinner, Alert } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { DataBuilder } from "./components/data-builder/DataBuilder";
-import { productData as defaultProductData } from "../data/productData";
 import { useDataBuilderStore } from "./stores/useDataBuilderStore";
 
 export default function App() {
-  const { productGroups, isDirty, isSaving, isLoading, error, lastSaved, initializeFromProductData, saveData, loadData, clearError } =
+  const { productGroups, isDirty, isSaving, isLoading, error, lastSaved, saveData, loadData, clearError, initializeFromWindowData } =
     useDataBuilderStore();
 
-  // Initialize with default data on first load
+  // Initialize from window data on first load - REMOVE the default data override
   React.useEffect(() => {
-    if (productGroups.length === 0) {
-      initializeFromProductData(defaultProductData);
+    const windowData = (window as any).urbanaAdmin;
+
+    if (windowData && productGroups.length === 0) {
+      console.log("App initializing from window data");
+      initializeFromWindowData();
     }
-  }, [productGroups.length, initializeFromProductData]);
+  }, [initializeFromWindowData, productGroups.length]);
 
   const handleSave = async () => {
     try {
       clearError();
       await saveData();
-      // Success is handled by the store
     } catch (error) {
       console.error("Save failed:", error);
-      // Error is handled by the store
     }
   };
 
@@ -33,7 +33,6 @@ export default function App() {
       await loadData();
     } catch (error) {
       console.error("Load failed:", error);
-      // Error is handled by the store
     }
   };
 

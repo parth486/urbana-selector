@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   Card,
   CardBody,
@@ -23,131 +23,27 @@ import {
   Tab,
   Image,
   Divider,
+  addToast,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { useDataBuilderStore, Product } from "../../stores/useDataBuilderStore";
+import { FileManager } from "./product-fields/FileManager";
+import { ImageGalleryManager } from "./product-fields/ImageGalleryManager";
+import { SpecificationManager } from "./product-fields/SpecificationManager";
+import { AssetGenerator } from "../../utils/assetGenerator";
 
-interface FileManagerProps {
-  files: Record<string, string>;
-  onFilesChange: (files: Record<string, string>) => void;
-}
-
-const FileManager: React.FC<FileManagerProps> = ({ files, onFilesChange }) => {
-  const [fileName, setFileName] = React.useState("");
-  const [fileUrl, setFileUrl] = React.useState("");
-
-  const handleAddFile = () => {
-    if (fileName.trim() && fileUrl.trim()) {
-      onFilesChange({
-        ...files,
-        [fileName.trim()]: fileUrl.trim(),
-      });
-      setFileName("");
-      setFileUrl("");
-    }
-  };
-
-  const handleRemoveFile = (key: string) => {
-    const newFiles = { ...files };
-    delete newFiles[key];
-    onFilesChange(newFiles);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input
-          placeholder="File name"
-          value={fileName}
-          onChange={(e) => setFileName(e.target.value)}
-          size="sm"
-          classNames={{ input: "urbana-input" }}
-        />
-        <Input
-          placeholder="File URL"
-          value={fileUrl}
-          onChange={(e) => setFileUrl(e.target.value)}
-          size="sm"
-          classNames={{ input: "urbana-input" }}
-        />
-        <Button size="sm" color="primary" onPress={handleAddFile} isDisabled={!fileName.trim() || !fileUrl.trim()}>
-          Add
-        </Button>
-      </div>
-
-      {Object.entries(files).length > 0 && (
-        <div className="space-y-2">
-          {Object.entries(files).map(([name, url]) => (
-            <div key={name} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-              <div>
-                <span className="font-medium text-sm">{name}</span>
-                <span className="text-xs text-gray-500 ml-2">{url}</span>
-              </div>
-              <Button size="sm" variant="light" color="danger" onPress={() => handleRemoveFile(name)}>
-                Remove
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-interface SpecificationManagerProps {
-  specifications: string[];
-  onSpecificationsChange: (specs: string[]) => void;
-}
-
-const SpecificationManager: React.FC<SpecificationManagerProps> = ({ specifications, onSpecificationsChange }) => {
-  const [inputValue, setInputValue] = React.useState("");
-
-  const handleAddSpec = () => {
-    if (inputValue.trim() && !specifications.includes(inputValue.trim())) {
-      onSpecificationsChange([...specifications, inputValue.trim()]);
-      setInputValue("");
-    }
-  };
-
-  const handleRemoveSpec = (spec: string) => {
-    onSpecificationsChange(specifications.filter((s) => s !== spec));
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input
-          placeholder="Add specification"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleAddSpec()}
-          size="sm"
-          classNames={{ input: "urbana-input" }}
-        />
-        <Button size="sm" color="primary" onPress={handleAddSpec} isDisabled={!inputValue.trim()}>
-          Add
-        </Button>
-      </div>
-
-      {specifications.length > 0 && (
-        <div className="space-y-2">
-          {specifications.map((spec, index) => (
-            <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-              <span className="text-sm">{spec}</span>
-              <Button size="sm" variant="light" color="danger" onPress={() => handleRemoveSpec(spec)}>
-                Remove
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-export const ProductsManager: React.FC = () => {
-  const { products, productRanges, addProduct, updateProduct, removeProduct, linkProductToRange, unlinkProductFromRange, relationships } =
-    useDataBuilderStore();
+export const ProductsManager: React.FC = ({ stepperID }) => {
+  const {
+    products,
+    productRanges,
+    productGroups,
+    addProduct,
+    updateProduct,
+    removeProduct,
+    linkProductToRange,
+    unlinkProductFromRange,
+    relationships,
+  } = useDataBuilderStore();
 
   const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
   const [editingProduct, setEditingProduct] = React.useState<Product | null>(null);
@@ -163,7 +59,63 @@ export const ProductsManager: React.FC = () => {
   const [selectedRanges, setSelectedRanges] = React.useState<Set<string>>(new Set());
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  const handleAddProduct = () => {
+  // Get category and range info for current product
+  const currentProductContext = useMemo(() => {
+    if (!editingProduct) return null;
+
+    const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => productIds.includes(editingProduct.id))?.[0];
+
+    if (!rangeId) return null;
+
+    const range = productRanges.find((r) => r.id === rangeId);
+    if (!range) return null;
+
+    const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => rangeIds.includes(rangeId))?.[0];
+
+    if (!groupId) return null;
+
+    const group = productGroups.find((g) => g.id === groupId);
+    if (!group) return null;
+
+    return {
+      category: group.name,
+      range: range.name,
+      productCode: editingProduct.code,
+    };
+  }, [editingProduct, relationships, productRanges, productGroups]);
+
+  const handleFetchAllProductAssets = useCallback(async () => {
+    const confirmed = confirm(
+      "This will fetch images and files from plugin folders for ALL products and update their data. This action cannot be undone. Continue?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const result = await AssetGenerator.fetchAndUpdateAllProductAssets(
+        productGroups,
+        productRanges,
+        products,
+        relationships,
+        updateProduct,
+        stepperID
+      );
+
+      addToast({
+        color: result.success ? "success" : result.updatedCount === 0 ? "warning" : "danger",
+        title: result.message,
+      });
+    } catch (error) {
+      console.error("Error fetching all product assets:", error);
+
+      addToast({
+        color: "danger",
+        title: "Error fetching assets. Please check console for details.",
+      });
+    }
+  }, [updateProduct]);
+
+  const handleAddProduct = useCallback(() => {
     setEditingProduct(null);
     setFormData({
       code: "",
@@ -177,58 +129,67 @@ export const ProductsManager: React.FC = () => {
     setSelectedRanges(new Set());
     setErrors({});
     onOpen();
-  };
+  }, [onOpen]);
 
-  const handleEditProduct = (product: Product) => {
-    setEditingProduct(product);
-    setFormData({
-      code: product.code,
-      name: product.name,
-      overview: product.overview,
-      description: product.description,
-      specifications: [...product.specifications],
-      imageGallery: [...product.imageGallery],
-      files: { ...product.files },
-    });
+  const handleEditProduct = useCallback(
+    (product: Product) => {
+      setEditingProduct(product);
+      setFormData({
+        code: product.code,
+        name: product.name,
+        overview: product.overview,
+        description: product.description,
+        specifications: [...product.specifications],
+        imageGallery: [...product.imageGallery],
+        files: { ...product.files },
+      });
 
-    // Find which ranges this product belongs to
-    const linkedRanges = new Set<string>();
-    Object.entries(relationships.rangeToProducts).forEach(([rangeId, productIds]) => {
-      if (productIds.includes(product.id)) {
-        linkedRanges.add(rangeId);
+      // Find which ranges this product belongs to
+      const linkedRanges = new Set<string>();
+      Object.entries(relationships.rangeToProducts).forEach(([rangeId, productIds]) => {
+        if (productIds.includes(product.id)) {
+          linkedRanges.add(rangeId);
+        }
+      });
+      setSelectedRanges(linkedRanges);
+
+      setErrors({});
+      onOpen();
+    },
+    [relationships.rangeToProducts, onOpen]
+  );
+
+  const handleDeleteProduct = useCallback(
+    (productId: string) => {
+      if (confirm("Are you sure you want to delete this product?")) {
+        removeProduct(productId);
       }
-    });
-    setSelectedRanges(linkedRanges);
+    },
+    [removeProduct]
+  );
 
-    setErrors({});
-    onOpen();
-  };
+  const handleInputChange = useCallback(
+    (field: keyof Omit<Product, "id">, value: string | string[] | Record<string, string>) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
 
-  const handleDeleteProduct = (productId: string) => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      removeProduct(productId);
-    }
-  };
+      // Generate code from name if it's empty
+      if (field === "name" && !formData.code && typeof value === "string") {
+        const generatedCode = value
+          .toUpperCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^A-Z0-9-]/g, "");
+        setFormData((prev) => ({ ...prev, code: generatedCode }));
+      }
 
-  const handleInputChange = (field: keyof Omit<Product, "id">, value: string | string[] | Record<string, string>) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+      // Clear error when field is edited
+      if (errors[field]) {
+        setErrors((prev) => ({ ...prev, [field]: "" }));
+      }
+    },
+    [formData.code, errors]
+  );
 
-    // Generate code from name if it's empty
-    if (field === "name" && !formData.code && typeof value === "string") {
-      const generatedCode = value
-        .toUpperCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^A-Z0-9-]/g, "");
-      setFormData((prev) => ({ ...prev, code: generatedCode }));
-    }
-
-    // Clear error when field is edited
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }));
-    }
-  };
-
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.code.trim()) {
@@ -262,9 +223,9 @@ export const ProductsManager: React.FC = () => {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }, [formData, products, editingProduct, selectedRanges]);
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!validateForm()) return;
 
     let productId: string;
@@ -294,10 +255,21 @@ export const ProductsManager: React.FC = () => {
     });
 
     onClose();
-  };
+  }, [
+    validateForm,
+    editingProduct,
+    updateProduct,
+    formData,
+    relationships.rangeToProducts,
+    unlinkProductFromRange,
+    addProduct,
+    selectedRanges,
+    linkProductToRange,
+    onClose,
+  ]);
 
   // Get products grouped by their parent ranges
-  const getGroupedProducts = () => {
+  const getGroupedProducts = useCallback(() => {
     const grouped: Record<string, Product[]> = {};
     const ungrouped: Product[] = [];
 
@@ -320,7 +292,7 @@ export const ProductsManager: React.FC = () => {
     });
 
     return { grouped, ungrouped };
-  };
+  }, [products, relationships.rangeToProducts, productRanges]);
 
   const { grouped, ungrouped } = getGroupedProducts();
 
@@ -331,14 +303,25 @@ export const ProductsManager: React.FC = () => {
           <h3 className="text-xl font-semibold">Products</h3>
           <p className="text-sm text-foreground-500">Manage individual products with detailed specifications</p>
         </div>
-        <Button
-          color="primary"
-          onPress={handleAddProduct}
-          startContent={<Icon icon="lucide:plus" width={18} />}
-          isDisabled={productRanges.length === 0}
-        >
-          Add Product
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            color="secondary"
+            variant="flat"
+            onPress={handleFetchAllProductAssets}
+            startContent={<Icon icon="lucide:refresh-cw" width={18} />}
+            isDisabled={products.length === 0}
+          >
+            Refetch All Assets
+          </Button>
+          <Button
+            color="primary"
+            onPress={handleAddProduct}
+            startContent={<Icon icon="lucide:plus" width={18} />}
+            isDisabled={productRanges.length === 0}
+          >
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {productRanges.length === 0 ? (
@@ -408,7 +391,15 @@ export const ProductsManager: React.FC = () => {
         </div>
       )}
 
-      <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="3xl" scrollBehavior="inside" className="urbana-modal">
+      <Modal
+        isDismissable={false}
+        isKeyboardDismissDisabled={true}
+        isOpen={isOpen}
+        onOpenChange={onOpenChange}
+        size="4xl"
+        scrollBehavior="inside"
+        className="urbana-modal"
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -483,65 +474,30 @@ export const ProductsManager: React.FC = () => {
                   </Tab>
 
                   <Tab key="specifications" title="Specifications">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium text-foreground-700 mb-2 block">Product Specifications</label>
-                        <SpecificationManager
-                          specifications={formData.specifications}
-                          onSpecificationsChange={(specs) => handleInputChange("specifications", specs)}
-                        />
-                      </div>
-                    </div>
+                    <SpecificationManager
+                      specifications={formData.specifications}
+                      onSpecificationsChange={(specs) => handleInputChange("specifications", specs)}
+                    />
                   </Tab>
 
-                  <Tab key="files" title="Files & Images">
-                    <div className="space-y-6">
-                      <div>
-                        <label className="text-sm font-medium text-foreground-700 mb-2 block">Image Gallery (URLs)</label>
-                        <div className="space-y-2">
-                          {formData.imageGallery.map((url, index) => (
-                            <div key={index} className="flex gap-2">
-                              <Input
-                                placeholder="Image URL"
-                                value={url}
-                                onChange={(e) => {
-                                  const newGallery = [...formData.imageGallery];
-                                  newGallery[index] = e.target.value;
-                                  handleInputChange("imageGallery", newGallery);
-                                }}
-                                size="sm"
-                                classNames={{ input: "urbana-input" }}
-                              />
-                              <Button
-                                size="sm"
-                                variant="light"
-                                color="danger"
-                                onPress={() => {
-                                  const newGallery = formData.imageGallery.filter((_, i) => i !== index);
-                                  handleInputChange("imageGallery", newGallery);
-                                }}
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          ))}
-                          <Button
-                            size="sm"
-                            variant="flat"
-                            onPress={() => handleInputChange("imageGallery", [...formData.imageGallery, ""])}
-                          >
-                            Add Image
-                          </Button>
-                        </div>
-                      </div>
+                  <Tab key="images" title="Images">
+                    <ImageGalleryManager
+                      imageGallery={formData.imageGallery}
+                      onImageGalleryChange={(images) => handleInputChange("imageGallery", images)}
+                      productCode={currentProductContext?.productCode || formData.code}
+                      category={currentProductContext?.category}
+                      range={currentProductContext?.range}
+                    />
+                  </Tab>
 
-                      <Divider />
-
-                      <div>
-                        <label className="text-sm font-medium text-foreground-700 mb-2 block">Product Files</label>
-                        <FileManager files={formData.files} onFilesChange={(files) => handleInputChange("files", files)} />
-                      </div>
-                    </div>
+                  <Tab key="files" title="Files">
+                    <FileManager
+                      files={formData.files}
+                      onFilesChange={(files) => handleInputChange("files", files)}
+                      productCode={currentProductContext?.productCode || formData.code}
+                      category={currentProductContext?.category}
+                      range={currentProductContext?.range}
+                    />
                   </Tab>
                 </Tabs>
               </ModalBody>
@@ -567,7 +523,7 @@ interface ProductCardProps {
   onDelete: (productId: string) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDelete }) => {
+const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, onDelete }) => {
   const hasImages = product.imageGallery.length > 0 && product.imageGallery[0];
 
   return (
@@ -628,4 +584,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDelete }) 
       </CardBody>
     </Card>
   );
-};
+});
+
+ProductCard.displayName = "ProductCard";

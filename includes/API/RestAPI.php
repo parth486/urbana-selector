@@ -116,6 +116,94 @@ class RestAPI {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		// Generate asset folders endpoint (admin only)
+		register_rest_route(
+			'urbana/v1',
+			'/generate-asset-folders',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'generate_asset_folders' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'structures' => array(
+						'required' => true,
+						'type'     => 'array',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/debug-paths',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'debug_paths' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		// Fetch product images endpoint (admin only)
+		register_rest_route(
+			'urbana/v1',
+			'/fetch-product-images',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'fetch_product_images' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'productCode' => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'category'    => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'range'       => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+				),
+			)
+		);
+
+		// Fetch product files endpoint (admin only)
+		register_rest_route(
+			'urbana/v1',
+			'/fetch-product-files',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'fetch_product_files' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'productCode' => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'category'    => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'range'       => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+				),
+			)
+		);
+
+		// Fetch all product assets endpoint (admin only)
+		register_rest_route(
+			'urbana/v1',
+			'/fetch-all-product-assets',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'fetch_all_product_assets' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	public function submit_form( $request ) {
@@ -368,5 +456,471 @@ class RestAPI {
 		// For XLSX export, you'd need a library like PhpSpreadsheet
 		// For now, fallback to CSV
 		return $this->export_csv( $submissions );
+	}
+
+	public function generate_asset_folders( $request ) {
+		$structures = $request->get_param( 'structures' );
+
+		if ( empty( $structures ) ) {
+			return new \WP_Error( 'no_structures', 'No folder structures provided', array( 'status' => 400 ) );
+		}
+
+		// Use the defined constant for plugin path
+		$plugin_dir      = URBANA_PLUGIN_PATH;
+		$created_folders = array();
+		$errors          = array();
+
+		foreach ( $structures as $structure ) {
+			// Validate structure data
+			if ( ! isset( $structure['imagesPath'] ) || ! isset( $structure['downloadsPath'] ) ) {
+				$errors[] = 'Invalid structure data provided';
+				continue;
+			}
+
+			// Construct full paths
+			$images_path    = $plugin_dir . $structure['imagesPath'];
+			$downloads_path = $plugin_dir . $structure['downloadsPath'];
+
+			// Normalize paths to avoid issues with different directory separators
+			$images_path           = wp_normalize_path( $images_path );
+			$downloads_path        = wp_normalize_path( $downloads_path );
+			$plugin_dir_normalized = wp_normalize_path( $plugin_dir );
+
+			// Enhanced security check - ensure paths are within plugin directory
+			$real_images_parent    = wp_normalize_path( dirname( $images_path ) );
+			$real_downloads_parent = wp_normalize_path( dirname( $downloads_path ) );
+
+			// Check if the parent directories are within the plugin directory
+			if ( strpos( $real_images_parent, $plugin_dir_normalized ) !== 0 ||
+			strpos( $real_downloads_parent, $plugin_dir_normalized ) !== 0 ) {
+				$errors[] = "Invalid path detected for security reasons: {$structure['imagesPath']} or {$structure['downloadsPath']}";
+				continue;
+			}
+
+			// Create images folder
+			if ( ! file_exists( $images_path ) ) {
+				if ( wp_mkdir_p( $images_path ) ) {
+					$created_folders[] = $structure['imagesPath'];
+
+					// Create .gitkeep file to ensure folder is tracked
+					file_put_contents( $images_path . '/.gitkeep', '' );
+
+					// Create sample README file
+					$readme_content  = "# Images Directory\n\n";
+					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
+					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
+					$readme_content .= "Place product images in this directory:\n";
+					$readme_content .= "- hero-image.jpg (main product image)\n";
+					$readme_content .= "- gallery-1.jpg, gallery-2.jpg, etc. (additional images)\n\n";
+					$readme_content .= "Example usage in product data:\n";
+					$readme_content .= "```\n";
+					$readme_content .= "imageGallery: [\n";
+					$readme_content .= "  '{$structure['imagesPath']}/hero-image.jpg',\n";
+					$readme_content .= "  '{$structure['imagesPath']}/gallery-1.jpg',\n";
+					$readme_content .= "]\n";
+					$readme_content .= "```\n";
+					file_put_contents( $images_path . '/README.md', $readme_content );
+
+					// Create a sample .htaccess file to allow image serving
+					$htaccess_content  = "# Allow image files to be served\n";
+					$htaccess_content .= "<FilesMatch \"\\.(jpg|jpeg|png|gif|webp|svg)$\">\n";
+					$htaccess_content .= "    Order allow,deny\n";
+					$htaccess_content .= "    Allow from all\n";
+					$htaccess_content .= "</FilesMatch>\n";
+					file_put_contents( $images_path . '/.htaccess', $htaccess_content );
+				} else {
+					$errors[] = 'Failed to create images folder: ' . $structure['imagesPath'] . ' (Full path: ' . $images_path . ')';
+				}
+			} else {
+				// Folder exists, just note it
+				$errors[] = 'Images folder already exists: ' . $structure['imagesPath'];
+			}
+
+			// Create downloads folder
+			if ( ! file_exists( $downloads_path ) ) {
+				if ( wp_mkdir_p( $downloads_path ) ) {
+					$created_folders[] = $structure['downloadsPath'];
+
+					// Create .gitkeep file
+					file_put_contents( $downloads_path . '/.gitkeep', '' );
+
+					// Create sample README file
+					$readme_content  = "# Downloads Directory\n\n";
+					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
+					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
+					$readme_content .= "Place product files in this directory:\n";
+					$readme_content .= "- PDF specifications (.pdf)\n";
+					$readme_content .= "- Installation guides (.pdf)\n";
+					$readme_content .= "- CAD drawings (.dwg)\n";
+					$readme_content .= "- Revit models (.rvt)\n";
+					$readme_content .= "- Other technical documents\n\n";
+					$readme_content .= "Example usage in product data:\n";
+					$readme_content .= "```\n";
+					$readme_content .= "files: {\n";
+					$readme_content .= "  'PDF Specification': '{$structure['downloadsPath']}/spec.pdf',\n";
+					$readme_content .= "  'Installation Guide': '{$structure['downloadsPath']}/install.pdf',\n";
+					$readme_content .= "  'CAD Drawing': '{$structure['downloadsPath']}/drawing.dwg',\n";
+					$readme_content .= "}\n";
+					$readme_content .= "```\n";
+					file_put_contents( $downloads_path . '/README.md', $readme_content );
+
+					// Create .htaccess to protect downloads (force download instead of display)
+					$htaccess_content  = "# Force download of files instead of displaying them\n";
+					$htaccess_content .= "<FilesMatch \"\\.(pdf|dwg|rvt|doc|docx|xls|xlsx)$\">\n";
+					$htaccess_content .= "    Header set Content-Disposition attachment\n";
+					$htaccess_content .= "</FilesMatch>\n\n";
+					$htaccess_content .= "# Prevent directory browsing\n";
+					$htaccess_content .= "Options -Indexes\n";
+					file_put_contents( $downloads_path . '/.htaccess', $htaccess_content );
+				} else {
+					$errors[] = 'Failed to create downloads folder: ' . $structure['downloadsPath'] . ' (Full path: ' . $downloads_path . ')';
+				}
+			} else {
+				// Folder exists, just note it
+				$errors[] = 'Downloads folder already exists: ' . $structure['downloadsPath'];
+			}
+		}
+
+		// Separate actual errors from "already exists" messages
+		$actual_errors = array_filter(
+			$errors,
+			function ( $error ) {
+				return strpos( $error, 'already exists' ) === false;
+			}
+		);
+
+		$already_exists = array_filter(
+			$errors,
+			function ( $error ) {
+				return strpos( $error, 'already exists' ) !== false;
+			}
+		);
+
+		$success = empty( $actual_errors );
+
+		// Build message
+		if ( $success ) {
+			$message = sprintf( 'Successfully created %d new folders', count( $created_folders ) );
+			if ( ! empty( $already_exists ) ) {
+				$message .= sprintf( '. %d folders already existed.', count( $already_exists ) );
+			}
+		} else {
+			$message = 'Some folders could not be created. Errors: ' . implode( ', ', $actual_errors );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success'        => $success,
+				'message'        => $message,
+				'created'        => $created_folders,
+				'errors'         => $actual_errors,
+				'already_exists' => array_values( $already_exists ),
+				'debug_info'     => array(
+					'plugin_path'      => $plugin_dir_normalized,
+					'total_structures' => count( $structures ),
+				),
+			)
+		);
+	}
+
+	public function debug_paths( $request ) {
+		$plugin_dir = URBANA_PLUGIN_PATH;
+
+		return rest_ensure_response(
+			array(
+				'plugin_path'            => $plugin_dir,
+				'plugin_path_normalized' => wp_normalize_path( $plugin_dir ),
+				'plugin_url'             => URBANA_PLUGIN_URL,
+				'sample_structure'       => array(
+					'imagesPath'       => 'assets/products/shelter/peninsula/k301/images',
+					'full_images_path' => wp_normalize_path( $plugin_dir . 'assets/products/shelter/peninsula/k301/images' ),
+				),
+				'permissions'            => array(
+					'can_create_files'    => is_writable( $plugin_dir ),
+					'assets_dir_exists'   => file_exists( $plugin_dir . 'assets' ),
+					'assets_dir_writable' => is_writable( $plugin_dir . 'assets' ),
+				),
+			)
+		);
+	}
+
+	public function fetch_product_images( $request ) {
+		$product_code = sanitize_text_field( $request->get_param( 'productCode' ) );
+		$category     = sanitize_text_field( $request->get_param( 'category' ) );
+		$range        = sanitize_text_field( $request->get_param( 'range' ) );
+
+		$images_path = URBANA_PLUGIN_PATH . "assets/products/{$category}/{$range}/{$product_code}/images/";
+
+		if ( ! file_exists( $images_path ) ) {
+			return rest_ensure_response(
+				array(
+					'success' => false,
+					'message' => 'Images folder not found',
+					'images'  => array(),
+				)
+			);
+		}
+
+		$image_extensions = array( 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg' );
+		$images           = array();
+		$base_url         = URBANA_PLUGIN_URL . "assets/products/{$category}/{$range}/{$product_code}/images/";
+
+		$files = scandir( $images_path );
+		foreach ( $files as $file ) {
+			if ( $file === '.' || $file === '..' ) {
+				continue;
+			}
+
+			$file_extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
+			if ( in_array( $file_extension, $image_extensions ) ) {
+				$images[] = $base_url . $file;
+			}
+		}
+
+		// Sort images naturally (hero-image.jpg first, then gallery-1.jpg, etc.)
+		usort(
+			$images,
+			function ( $a, $b ) {
+				$a_name = basename( $a );
+				$b_name = basename( $b );
+
+				// Prioritize hero-image
+				if ( strpos( $a_name, 'hero' ) !== false ) {
+					return -1;
+				}
+				if ( strpos( $b_name, 'hero' ) !== false ) {
+					return 1;
+				}
+
+				return strnatcmp( $a_name, $b_name );
+			}
+		);
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => sprintf( 'Found %d images', count( $images ) ),
+				'images'  => $images,
+			)
+		);
+	}
+
+	public function fetch_product_files( $request ) {
+		$product_code = sanitize_text_field( $request->get_param( 'productCode' ) );
+		$category     = sanitize_text_field( $request->get_param( 'category' ) );
+		$range        = sanitize_text_field( $request->get_param( 'range' ) );
+
+		$files_path = URBANA_PLUGIN_PATH . "assets/products/{$category}/{$range}/{$product_code}/downloads/";
+
+		if ( ! file_exists( $files_path ) ) {
+			return rest_ensure_response(
+				array(
+					'success' => false,
+					'message' => 'Downloads folder not found',
+					'files'   => array(),
+				)
+			);
+		}
+
+		$files    = array();
+		$base_url = URBANA_PLUGIN_URL . "assets/products/{$category}/{$range}/{$product_code}/downloads/";
+
+		$directory_files = scandir( $files_path );
+		foreach ( $directory_files as $file ) {
+			if ( $file === '.' || $file === '..' || $file === '.gitkeep' || $file === 'README.md' ) {
+				continue;
+			}
+
+			$file_name      = pathinfo( $file, PATHINFO_FILENAME );
+			$file_extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
+
+			// Generate a human-readable name based on filename
+			$display_name = $this->generate_file_display_name( $file_name, $file_extension );
+
+			$files[ $display_name ] = $base_url . $file;
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => sprintf( 'Found %d files', count( $files ) ),
+				'files'   => $files,
+			)
+		);
+	}
+
+	public function fetch_all_product_assets( $request ) {
+		// Get all product data from database
+		$stepper_id   = absint( $request->get_param( 'stepperID' ) );
+		$product_data = $this->db_manager->get_product_data( $stepper_id );
+
+		if ( ! $product_data ) {
+			return new \WP_Error( 'no_data', 'No product data found', array( 'status' => 404 ) );
+		}
+
+		if ( ! isset( $product_data['stepperForm']['steps'][3]['productDetails'] ) ) {
+			return new \WP_Error( 'no_products', 'No product details found', array( 'status' => 404 ) );
+		}
+
+		$stepper_form = $product_data['stepperForm'];
+
+		$product_details = $stepper_form['steps'][3]['productDetails'];
+		$updated_assets  = array();
+		$base_path       = URBANA_PLUGIN_PATH . 'assets/products/';
+
+		foreach ( $product_details as $product_code => $product_info ) {
+			// Find the product's category and range by checking the data structure
+			$category = null;
+			$range    = null;
+
+			// Search through step 2 ranges and step 3 products to find relationships
+			if ( isset( $stepper_form['steps'][1]['ranges'] ) &&
+			isset( $stepper_form['steps'][2]['products'] ) ) {
+
+				foreach ( $stepper_form['steps'][2]['products'] as $range_name => $product_codes ) {
+					if ( in_array( $product_code, $product_codes ) ) {
+						$range = $range_name;
+
+						// Find category for this range
+						foreach ( $stepper_form['steps'][1]['ranges'] as $category_name => $ranges ) {
+							if ( in_array( $range_name, $ranges ) ) {
+								$category = $category_name;
+								break;
+							}
+						}
+						break;
+					}
+				}
+			}
+
+			if ( ! $category || ! $range ) {
+				continue; // Skip if we can't determine the category/range
+			}
+
+			$sanitized_category = strtolower( $category );
+			$sanitized_range    = strtolower( str_replace( ' ', '-', $range ) );
+			$sanitized_code     = strtolower( $product_code );
+
+			// Fetch images
+			$images_path = $base_path . "{$sanitized_category}/{$sanitized_range}/{$sanitized_code}/images/";
+			$images      = $this->scan_directory_for_images( $images_path, $sanitized_category, $sanitized_range, $sanitized_code );
+
+			// Fetch files
+			$files_path = $base_path . "{$sanitized_category}/{$sanitized_range}/{$sanitized_code}/downloads/";
+			$files      = $this->scan_directory_for_files( $files_path, $sanitized_category, $sanitized_range, $sanitized_code );
+
+			if ( ! empty( $images ) || ! empty( $files ) ) {
+				$updated_assets[ $product_code ] = array(
+					'images' => $images,
+					'files'  => $files,
+				);
+			}
+		}
+
+		return rest_ensure_response(
+			array(
+				'success'       => true,
+				'message'       => sprintf( 'Processed %d products', count( $updated_assets ) ),
+				'productAssets' => $updated_assets,
+			)
+		);
+	}
+
+	private function scan_directory_for_images( $images_path, $category, $range, $product_code ) {
+		if ( ! file_exists( $images_path ) ) {
+			return array();
+		}
+
+		$image_extensions = array( 'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg' );
+		$images           = array();
+		$base_url         = URBANA_PLUGIN_URL . "assets/products/{$category}/{$range}/{$product_code}/images/";
+
+		$files = scandir( $images_path );
+		foreach ( $files as $file ) {
+			if ( $file === '.' || $file === '..' || $file === '.gitkeep' || $file === 'README.md' ) {
+				continue;
+			}
+
+			$file_extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
+			if ( in_array( $file_extension, $image_extensions ) ) {
+				$images[] = $base_url . $file;
+			}
+		}
+
+		// Sort images naturally
+		usort(
+			$images,
+			function ( $a, $b ) {
+				$a_name = basename( $a );
+				$b_name = basename( $b );
+
+				if ( strpos( $a_name, 'hero' ) !== false ) {
+					return -1;
+				}
+				if ( strpos( $b_name, 'hero' ) !== false ) {
+					return 1;
+				}
+
+				return strnatcmp( $a_name, $b_name );
+			}
+		);
+
+		return $images;
+	}
+
+	private function scan_directory_for_files( $files_path, $category, $range, $product_code ) {
+		if ( ! file_exists( $files_path ) ) {
+			return array();
+		}
+
+		$files    = array();
+		$base_url = URBANA_PLUGIN_URL . "assets/products/{$category}/{$range}/{$product_code}/downloads/";
+
+		$directory_files = scandir( $files_path );
+		foreach ( $directory_files as $file ) {
+			if ( $file === '.' || $file === '..' || $file === '.gitkeep' || $file === 'README.md' ) {
+				continue;
+			}
+
+			$file_name      = pathinfo( $file, PATHINFO_FILENAME );
+			$file_extension = strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
+			$display_name   = $this->generate_file_display_name( $file_name, $file_extension );
+
+			$files[ $display_name ] = $base_url . $file;
+		}
+
+		return $files;
+	}
+
+	private function generate_file_display_name( $filename, $extension ) {
+		// Convert filename to a more readable format
+		$name = str_replace( array( '_', '-' ), ' ', $filename );
+		$name = ucwords( $name );
+
+		// Add extension context
+		switch ( $extension ) {
+			case 'pdf':
+				if ( strpos( strtolower( $filename ), 'spec' ) !== false ) {
+					return 'PDF Specification';
+				} elseif ( strpos( strtolower( $filename ), 'install' ) !== false ) {
+					return 'Installation Guide';
+				} elseif ( strpos( strtolower( $filename ), 'manual' ) !== false ) {
+					return 'User Manual';
+				} else {
+					return $name . ' (PDF)';
+				}
+			case 'dwg':
+				return 'CAD Drawing';
+			case 'rvt':
+				return 'Revit Model';
+			case 'doc':
+			case 'docx':
+				return $name . ' (Document)';
+			case 'xls':
+			case 'xlsx':
+				return $name . ' (Spreadsheet)';
+			default:
+				return $name;
+		}
 	}
 }

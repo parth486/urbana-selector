@@ -12,4 +12,5 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 *.local
+assets/products
 vendor

@@ -1,0 +1,37 @@
+/* Data Builder App Utility Classes */
+
+.sortable-item {
+  @apply transition-all duration-200;
+}
+
+.sortable-item.dragging {
+  @apply opacity-50 transform scale-95;
+}
+
+.drop-zone {
+  @apply border-2 border-dashed border-primary bg-primary-50 rounded-lg p-4 text-center transition-all;
+}
+
+.drop-zone.active {
+  @apply bg-primary-100 border-primary-500;
+}
+
+.icon-picker-grid {
+  @apply grid grid-cols-6 gap-2 max-h-48 overflow-y-auto;
+}
+
+.icon-picker-item {
+  @apply p-2 rounded hover:bg-content2 cursor-pointer transition-colors;
+}
+
+.icon-picker-item.selected {
+  @apply bg-primary text-white;
+}
+
+.json-preview {
+  @apply bg-code rounded-lg p-4 text-sm overflow-auto;
+}
+
+.json-preview pre {
+  @apply whitespace-pre-wrap break-words;
+}

@@ -1,0 +1,33 @@
+/* Data Builder App Component Styles */
+
+.data-builder-tabs {
+  @apply w-full;
+}
+
+.manager-section {
+  @apply p-6 space-y-6;
+}
+
+.add-item-form {
+  @apply  p-4 rounded-lg border-2 border-dashed border-default-300;
+}
+
+.item-list {
+  @apply space-y-3;
+}
+
+.item-card {
+  @apply  p-4 rounded-lg border border-default-200;
+}
+
+.drag-handle {
+  @apply cursor-move text-default-400 hover:text-default-600;
+}
+
+.relationship-connector {
+  @apply border-l-2 border-primary ml-4 pl-4;
+}
+
+.preview-section {
+  @apply  rounded-lg p-4 font-mono text-sm overflow-auto max-h-96;
+}

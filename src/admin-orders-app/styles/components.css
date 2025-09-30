@@ -1,0 +1,21 @@
+/* Components styles */
+
+.stepper-progress {
+  @apply flex items-center justify-between w-full;
+}
+
+.stepper-step {
+  @apply flex items-center;
+}
+
+.stepper-step-active {
+  @apply text-blue-600;
+}
+
+.stepper-step-completed {
+  @apply text-green-600;
+}
+
+.stepper-step-inactive {
+  @apply text-gray-400;
+}

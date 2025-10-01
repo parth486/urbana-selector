@@ -83,6 +83,8 @@ class AdminInit {
 		// Data Builder App
 		if ( $hook === 'urbana-selector_page_urbana-data-builder' ) {
 			if ( file_exists( $asset_file . 'data-builder-app.js' ) ) {
+
+				wp_enqueue_media();
 				wp_enqueue_script(
 					'urbana-data-builder',
 					URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.js',

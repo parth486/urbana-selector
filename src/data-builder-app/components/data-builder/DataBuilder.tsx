@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Tabs, Tab, Card, Button } from "@heroui/react";
+import { useEffect, useState, useCallback } from "react";
+import { Tabs, Tab, Card, Button, useDisclosure } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { addToast } from "@heroui/react";
 import { ProductGroupsManager } from "./ProductGroupsManager";
@@ -7,6 +7,7 @@ import { ProductRangesManager } from "./ProductRangesManager";
 import { ProductsManager } from "./ProductsManager";
 import { RelationshipsManager } from "./RelationshipsManager";
 import { DataPreview } from "./DataPreview";
+import { GenerateFoldersModal } from "./GenerateFoldersModal";
 import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
 
 export const DataBuilder: React.FC = () => {
@@ -30,6 +31,7 @@ export const DataBuilder: React.FC = () => {
   } = useDataBuilderStore();
 
   const [currentStepperId, setCurrentStepperId] = useState<number | null>(null);
+  const { isOpen: isFoldersModalOpen, onOpen: onFoldersModalOpen, onOpenChange: onFoldersModalOpenChange } = useDisclosure();
 
   // Initialize data from window on component mount
   useEffect(() => {
@@ -154,6 +156,16 @@ export const DataBuilder: React.FC = () => {
             </Button>
             <input type="file" accept=".json" className="hidden" onChange={handleImportData} />
           </label>
+          {/* Generate Folders Button */}
+          <Button
+            color="secondary"
+            variant="flat"
+            onPress={onFoldersModalOpen}
+            startContent={<Icon icon="lucide:folder-plus" width={18} />}
+            isDisabled={products.length === 0}
+          >
+            Generate Folders
+          </Button>
         </div>
       </div>
 
@@ -235,7 +247,7 @@ export const DataBuilder: React.FC = () => {
             }
           >
             <div className="p-6">
-              <ProductsManager />
+              <ProductsManager stepperID={currentStepperId} />
             </div>
           </Tab>
 
@@ -268,6 +280,8 @@ export const DataBuilder: React.FC = () => {
           </Tab>
         </Tabs>
       </Card>
+      {/* Generate Folders Modal */}
+      <GenerateFoldersModal isOpen={isFoldersModalOpen} onOpenChange={onFoldersModalOpenChange} />
     </div>
   );
 };

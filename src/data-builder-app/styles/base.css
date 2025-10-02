@@ -69,3 +69,23 @@
 	--bg-opacity-75: rgba(255, 255, 255, 0.75);
 	
 }
+
+.urbana-builder-page, .urbana-modal {
+ 	p:not([class*="mb"]):not([class*="mt"]) {
+       @apply m-0
+    }
+
+	h1:not([class*="mb"]):not([class*="mt"]),
+    h2:not([class*="mb"]):not([class*="mt"]),
+    h3:not([class*="mb"]):not([class*="mt"]),
+    h4:not([class*="mb"]):not([class*="mt"]),
+    h5:not([class*="mb"]):not([class*="mt"]),
+    h6:not([class*="mb"]):not([class*="mt"]) {
+        @apply m-0;
+    }
+
+
+	h1.flex, h2.flex, h3.flex, h4.flex, h5.flex, h6.flex {
+		@apply flex;
+	}
+}

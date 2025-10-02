@@ -354,7 +354,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                 <Card>
                   <CardBody>
                     <div className="space-y-4">
-                      <h4 className="font-semibold flex items-center gap-2">
+                      <h4 className="font-semibold flex items-center gap-2 mb-2">
                         <Icon icon="lucide:settings" width={16} />
                         Fetch Options
                       </h4>
@@ -367,6 +367,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                         description="Filter objects by prefix to limit the search scope"
                         startContent={<Icon icon="lucide:filter" width={16} />}
                         isDisabled={isFetching}
+                        classNames={{ input: "urbana-input" }}
                       />
                     </div>
                   </CardBody>

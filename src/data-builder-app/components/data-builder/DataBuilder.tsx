@@ -116,7 +116,7 @@ export const DataBuilder: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="urbana-builder-page max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <div>

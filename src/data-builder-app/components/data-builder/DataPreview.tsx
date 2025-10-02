@@ -337,7 +337,9 @@ export const DataPreview: React.FC = () => {
               </div>
             </CardHeader>
             <CardBody>
-              <Code className="w-full max-h-96 overflow-auto text-xs">{exportedData || JSON.stringify(stepperConfig, null, 2)}</Code>
+              <pre className="w-full px-2 py-1 h-fit font-mono font-normal bg-default/40 text-default-700 rounded-small text-xs overflow-x-auto">
+                <code>{exportedData || JSON.stringify(stepperConfig, null, 2)}</code>
+              </pre>
             </CardBody>
           </Card>
         </Tab>

@@ -133,6 +133,7 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
               onValueChange={(value) => handleInputChange("bucket_name", value)}
               startContent={<Icon icon="lucide:bucket" width={16} />}
               isRequired
+              classNames={{ input: "urbana-input" }}
             />
 
             <Select
@@ -158,6 +159,7 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
               onValueChange={(value) => handleInputChange("access_key", value)}
               startContent={<Icon icon="lucide:key" width={16} />}
               isRequired
+              classNames={{ input: "urbana-input" }}
             />
 
             <Input
@@ -168,6 +170,7 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
               onValueChange={(value) => handleInputChange("secret_key", value)}
               startContent={<Icon icon="lucide:eye-off" width={16} />}
               isRequired
+              classNames={{ input: "urbana-input" }}
             />
 
             <Divider />

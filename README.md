@@ -73,7 +73,7 @@ A modern WordPress plugin that provides a product configurator with React + Tail
 Add the stepper form to any page or post using the shortcode:
 
 ```php
-[urbana_product_stepper]
+[urbana_product_stepper id="7"]
 ```
 
 Optional parameters:

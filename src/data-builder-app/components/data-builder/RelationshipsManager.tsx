@@ -243,11 +243,12 @@ export const RelationshipsManager: React.FC = () => {
                           </div>
                           <div className="text-xs text-foreground-500">{group.description || "No description"}</div>
                         </div>
-                        <Badge content={group.children?.length || 0} color="primary" size="sm">
+                        <Badge classNames={{ base: "absolute" }} content={group.children?.length || 0} color="primary" size="sm">
                           <div className="w-4 h-4" />
                         </Badge>
                       </div>
                     }
+                    classNames={{ indicator: "-rotate-90 data-[open=true]:rotate-90 rtl:-rotate-180" }}
                   >
                     {group.children && group.children.length > 0 ? (
                       <div className="space-y-3 pl-4">
@@ -265,7 +266,7 @@ export const RelationshipsManager: React.FC = () => {
                                 </div>
                                 <div className="text-xs text-foreground-500">{range.description || "No description"}</div>
                               </div>
-                              <Badge content={range.children?.length || 0} color="secondary" size="sm">
+                              <Badge classNames={{ base: "absolute" }} content={range.children?.length || 0} color="secondary" size="sm">
                                 <div className="w-4 h-4" />
                               </Badge>
                             </div>

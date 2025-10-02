@@ -543,32 +543,6 @@ class RestAPI {
 				if ( wp_mkdir_p( $images_path ) ) {
 					$created_folders[] = $structure['imagesPath'];
 
-					// Create .gitkeep file to ensure folder is tracked
-					file_put_contents( $images_path . '/.gitkeep', '' );
-
-					// Create sample README file
-					$readme_content  = "# Images Directory\n\n";
-					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
-					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
-					$readme_content .= "Place product images in this directory:\n";
-					$readme_content .= "- hero-image.jpg (main product image)\n";
-					$readme_content .= "- gallery-1.jpg, gallery-2.jpg, etc. (additional images)\n\n";
-					$readme_content .= "Example usage in product data:\n";
-					$readme_content .= "```\n";
-					$readme_content .= "imageGallery: [\n";
-					$readme_content .= "  '{$structure['imagesPath']}/hero-image.jpg',\n";
-					$readme_content .= "  '{$structure['imagesPath']}/gallery-1.jpg',\n";
-					$readme_content .= "]\n";
-					$readme_content .= "```\n";
-					file_put_contents( $images_path . '/README.md', $readme_content );
-
-					// Create a sample .htaccess file to allow image serving
-					$htaccess_content  = "# Allow image files to be served\n";
-					$htaccess_content .= "<FilesMatch \"\\.(jpg|jpeg|png|gif|webp|svg)$\">\n";
-					$htaccess_content .= "    Order allow,deny\n";
-					$htaccess_content .= "    Allow from all\n";
-					$htaccess_content .= "</FilesMatch>\n";
-					file_put_contents( $images_path . '/.htaccess', $htaccess_content );
 				} else {
 					$errors[] = 'Failed to create images folder: ' . $structure['imagesPath'] . ' (Full path: ' . $images_path . ')';
 				}
@@ -582,37 +556,6 @@ class RestAPI {
 				if ( wp_mkdir_p( $downloads_path ) ) {
 					$created_folders[] = $structure['downloadsPath'];
 
-					// Create .gitkeep file
-					file_put_contents( $downloads_path . '/.gitkeep', '' );
-
-					// Create sample README file
-					$readme_content  = "# Downloads Directory\n\n";
-					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
-					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
-					$readme_content .= "Place product files in this directory:\n";
-					$readme_content .= "- PDF specifications (.pdf)\n";
-					$readme_content .= "- Installation guides (.pdf)\n";
-					$readme_content .= "- CAD drawings (.dwg)\n";
-					$readme_content .= "- Revit models (.rvt)\n";
-					$readme_content .= "- Other technical documents\n\n";
-					$readme_content .= "Example usage in product data:\n";
-					$readme_content .= "```\n";
-					$readme_content .= "files: {\n";
-					$readme_content .= "  'PDF Specification': '{$structure['downloadsPath']}/spec.pdf',\n";
-					$readme_content .= "  'Installation Guide': '{$structure['downloadsPath']}/install.pdf',\n";
-					$readme_content .= "  'CAD Drawing': '{$structure['downloadsPath']}/drawing.dwg',\n";
-					$readme_content .= "}\n";
-					$readme_content .= "```\n";
-					file_put_contents( $downloads_path . '/README.md', $readme_content );
-
-					// Create .htaccess to protect downloads (force download instead of display)
-					$htaccess_content  = "# Force download of files instead of displaying them\n";
-					$htaccess_content .= "<FilesMatch \"\\.(pdf|dwg|rvt|doc|docx|xls|xlsx)$\">\n";
-					$htaccess_content .= "    Header set Content-Disposition attachment\n";
-					$htaccess_content .= "</FilesMatch>\n\n";
-					$htaccess_content .= "# Prevent directory browsing\n";
-					$htaccess_content .= "Options -Indexes\n";
-					file_put_contents( $downloads_path . '/.htaccess', $htaccess_content );
 				} else {
 					$errors[] = 'Failed to create downloads folder: ' . $structure['downloadsPath'] . ' (Full path: ' . $downloads_path . ')';
 				}

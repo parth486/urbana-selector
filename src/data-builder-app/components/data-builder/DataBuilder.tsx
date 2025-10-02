@@ -8,6 +8,7 @@ import { ProductsManager } from "./ProductsManager";
 import { RelationshipsManager } from "./RelationshipsManager";
 import { DataPreview } from "./DataPreview";
 import { GenerateFoldersModal } from "./GenerateFoldersModal";
+import { FetchFromDigitalOceanModal } from "./FetchFromDigitalOceanModal";
 import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
 
 export const DataBuilder: React.FC = () => {
@@ -32,6 +33,7 @@ export const DataBuilder: React.FC = () => {
 
   const [currentStepperId, setCurrentStepperId] = useState<number | null>(null);
   const { isOpen: isFoldersModalOpen, onOpen: onFoldersModalOpen, onOpenChange: onFoldersModalOpenChange } = useDisclosure();
+  const { isOpen: isDigitalOceanModalOpen, onOpen: onDigitalOceanModalOpen, onOpenChange: onDigitalOceanModalOpenChange } = useDisclosure();
 
   // Initialize data from window on component mount
   useEffect(() => {
@@ -166,6 +168,17 @@ export const DataBuilder: React.FC = () => {
           >
             Generate Folders
           </Button>
+
+          {/* Fetch from Digital Ocean Button */}
+          <Button
+            color="warning"
+            variant="flat"
+            onPress={onDigitalOceanModalOpen}
+            startContent={<Icon icon="lucide:cloud-download" width={18} />}
+            isDisabled={products.length === 0}
+          >
+            Fetch from Digital Ocean
+          </Button>
         </div>
       </div>
 
@@ -282,6 +295,8 @@ export const DataBuilder: React.FC = () => {
       </Card>
       {/* Generate Folders Modal */}
       <GenerateFoldersModal isOpen={isFoldersModalOpen} onOpenChange={onFoldersModalOpenChange} />
+      {/* Fetch from Digital Ocean Modal */}
+      <FetchFromDigitalOceanModal isOpen={isDigitalOceanModalOpen} onOpenChange={onDigitalOceanModalOpenChange} />
     </div>
   );
 };

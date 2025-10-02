@@ -43,14 +43,11 @@ class AdminInit {
 	}
 
 	public function admin_page() {
+		wp_enqueue_script( 'urbana-settings' );
+		wp_enqueue_style( 'urbana-settings' );
+
 		echo '<div class="wrap">';
-		echo '<h1>Urbana Selector</h1>';
-		echo '<p>Welcome to the Urbana Selector plugin dashboard.</p>';
-		echo '<div class="card" style="max-width: 800px;">';
-		echo '<h2>Quick Actions</h2>';
-		echo '<p><a href="' . admin_url( 'admin.php?page=urbana-data-builder' ) . '" class="button button-primary">Manage Product Data</a></p>';
-		echo '<p><a href="' . admin_url( 'admin.php?page=urbana-orders' ) . '" class="button button-secondary">View Customer Submissions</a></p>';
-		echo '</div>';
+		echo '<div id="urbana-settings-root"></div>';
 		echo '</div>';
 	}
 
@@ -73,15 +70,63 @@ class AdminInit {
 	}
 
 	public function enqueue_admin_scripts( $hook ) {
-		// Only load scripts on our admin pages
+		// Only load scripts on our admin pages.
 		if ( strpos( $hook, 'urbana-' ) === false ) {
 			return;
 		}
 		global $wpdb;
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
 
-		// Data Builder App
-		if ( $hook === 'urbana-selector_page_urbana-data-builder' ) {
+		// Settings App (Main page).
+		if ( 'toplevel_page_urbana-selector' === $hook ) {
+			if ( file_exists( $asset_file . 'settings-app.js' ) ) {
+
+				wp_enqueue_script(
+					'urbana-settings',
+					URBANA_PLUGIN_URL . 'assets/dist/settings-app.js',
+					array(),
+					URBANA_VERSION,
+					true
+				);
+
+				// Add module type attribute.
+				add_filter(
+					'script_loader_tag',
+					function ( $tag, $handle ) {
+						if ( 'urbana-settings' === $handle ) {
+							return str_replace( '<script', '<script type="module"', $tag );
+						}
+						return $tag;
+					},
+					10,
+					2
+				);
+
+				wp_enqueue_style(
+					'urbana-settings',
+					URBANA_PLUGIN_URL . 'assets/dist/settings-app.css',
+					array(),
+					URBANA_VERSION
+				);
+
+				// Localize script for API calls.
+				wp_localize_script(
+					'urbana-settings',
+					'urbanaAdmin',
+					array(
+						'apiUrl'        => rest_url( 'urbana/v1/' ),
+						'nonce'         => wp_create_nonce( 'wp_rest' ),
+						'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+						'wpVersion'     => get_bloginfo( 'version' ),
+						'phpVersion'    => phpversion(),
+						'pluginVersion' => URBANA_VERSION,
+					)
+				);
+			}
+		}
+
+		// Data Builder App.
+		if ( 'urbana-selector_page_urbana-data-builder' === $hook ) {
 			if ( file_exists( $asset_file . 'data-builder-app.js' ) ) {
 
 				wp_enqueue_media();
@@ -93,7 +138,7 @@ class AdminInit {
 					true
 				);
 
-					// Add module type attribute
+					// Add module type attribute.
 				add_filter(
 					'script_loader_tag',
 					function ( $tag, $handle ) {
@@ -113,14 +158,14 @@ class AdminInit {
 					URBANA_VERSION
 				);
 
-				// Get data from database
+				// Get data from database.
 				$db_manager   = new \Urbana\Database\DatabaseManager();
 				$stepper_id   = $db_manager->get_product_data_first_id();
 				$stepper_data = $db_manager->get_product_data( $stepper_id, 'stepper_form_data' );
 				$builder_key  = 'stepper_data_builder_' . $stepper_id;
 				$builder_data = $db_manager->get_product_data( null, $builder_key );
 
-				// Localize script for API calls
+				// Localize script for API calls.
 				wp_localize_script(
 					'urbana-data-builder',
 					'urbanaAdmin',
@@ -129,15 +174,15 @@ class AdminInit {
 						'nonce'              => wp_create_nonce( 'wp_rest' ),
 						'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
 						'stepperId'          => $stepper_id,
-						'stepperFormData'    => $stepper_data ?: array(),
-						'stepperDataBuilder' => $builder_data ?: array(),
+						'stepperFormData'    => $stepper_data ? $stepper_data : array(),
+						'stepperDataBuilder' => $builder_data ? $builder_data : array(),
 					)
 				);
 			}
 		}
 
-		// Admin Orders App
-		if ( $hook === 'urbana-selector_page_urbana-orders' ) {
+		// Admin Orders App.
+		if ( 'urbana-selector_page_urbana-orders' === $hook ) {
 			if ( file_exists( $asset_file . 'admin-orders-app.js' ) ) {
 				wp_enqueue_script(
 					'urbana-admin-orders',
@@ -147,7 +192,7 @@ class AdminInit {
 					true
 				);
 
-				// Add module type attribute
+				// Add module type attribute.
 				add_filter(
 					'script_loader_tag',
 					function ( $tag, $handle ) {
@@ -167,7 +212,7 @@ class AdminInit {
 					URBANA_VERSION
 				);
 
-				// Localize script for API calls
+				// Localize script for API calls.
 				wp_localize_script(
 					'urbana-admin-orders',
 					'urbanaAdmin',

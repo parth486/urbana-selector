@@ -204,6 +204,47 @@ class RestAPI {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		// Digital Ocean Spaces endpoints
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/test-connection',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'test_do_connection' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/fetch-assets',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'fetch_do_assets' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/config',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_do_config' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/config',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'update_do_config' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	public function submit_form( $request ) {
@@ -922,5 +963,97 @@ class RestAPI {
 			default:
 				return $name;
 		}
+	}
+
+	public function test_do_connection( $request ) {
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		$result    = $do_spaces->test_connection();
+
+		return rest_ensure_response( $result );
+	}
+
+	public function fetch_do_assets( $request ) {
+		$prefix = sanitize_text_field( $request->get_param( 'prefix' ) ?: '' );
+
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+
+		if ( ! $do_spaces->is_configured() ) {
+			return new \WP_Error(
+				'not_configured',
+				'Digital Ocean Spaces not configured. Please check your settings.',
+				array( 'status' => 400 )
+			);
+		}
+
+		// $result = $do_spaces->list_objects( $prefix );
+		$result = $do_spaces->get_complete_folder_structure( $prefix );
+
+		if ( ! $result['success'] ) {
+			return new \WP_Error(
+				'fetch_failed',
+				$result['message'],
+				array(
+					'status'  => 500,
+					'details' => $result,
+				)
+			);
+		}
+
+		$structured_data = $do_spaces->organize_objects_by_structure( $result['objects'] );
+
+		return rest_ensure_response(
+			array(
+				'success'         => true,
+				'message'         => $result['message'],
+				'total_folders'   => count( $result['folders'] ),
+				'total_objects'   => count( $result['objects'] ),
+				'raw_folders'     => $result['folders'],
+				'raw_objects'     => $result['objects'],
+				'structured_data' => $result['structured_data'],
+				'debug_info'      => array(
+					'prefix'        => $prefix,
+					'configuration' => $do_spaces->get_configuration(),
+					'categories'    => array_keys( $structured_data ),
+				),
+			)
+		);
+	}
+
+	public function get_do_config( $request ) {
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		$config    = $do_spaces->get_configuration();
+
+		// Don't expose sensitive data
+		// unset( $config['access_key'] );
+		// unset( $config['secret_key'] );
+
+		return rest_ensure_response( $config );
+	}
+
+	public function update_do_config( $request ) {
+		$data = $request->get_json_params();
+
+		if ( isset( $data['bucket_name'] ) ) {
+			update_option( 'urbana_do_bucket_name', sanitize_text_field( $data['bucket_name'] ) );
+		}
+
+		if ( isset( $data['region'] ) ) {
+			update_option( 'urbana_do_region', sanitize_text_field( $data['region'] ) );
+		}
+
+		if ( isset( $data['access_key'] ) ) {
+			update_option( 'urbana_do_access_key', sanitize_text_field( $data['access_key'] ) );
+		}
+
+		if ( isset( $data['secret_key'] ) ) {
+			update_option( 'urbana_do_secret_key', sanitize_text_field( $data['secret_key'] ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'Configuration updated successfully',
+			)
+		);
 	}
 }

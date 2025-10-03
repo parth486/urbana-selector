@@ -204,6 +204,47 @@ class RestAPI {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		// Digital Ocean Spaces endpoints
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/test-connection',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'test_do_connection' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/fetch-assets',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'fetch_do_assets' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/config',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'get_do_config' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/config',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'update_do_config' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	public function submit_form( $request ) {
@@ -502,32 +543,6 @@ class RestAPI {
 				if ( wp_mkdir_p( $images_path ) ) {
 					$created_folders[] = $structure['imagesPath'];
 
-					// Create .gitkeep file to ensure folder is tracked
-					file_put_contents( $images_path . '/.gitkeep', '' );
-
-					// Create sample README file
-					$readme_content  = "# Images Directory\n\n";
-					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
-					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
-					$readme_content .= "Place product images in this directory:\n";
-					$readme_content .= "- hero-image.jpg (main product image)\n";
-					$readme_content .= "- gallery-1.jpg, gallery-2.jpg, etc. (additional images)\n\n";
-					$readme_content .= "Example usage in product data:\n";
-					$readme_content .= "```\n";
-					$readme_content .= "imageGallery: [\n";
-					$readme_content .= "  '{$structure['imagesPath']}/hero-image.jpg',\n";
-					$readme_content .= "  '{$structure['imagesPath']}/gallery-1.jpg',\n";
-					$readme_content .= "]\n";
-					$readme_content .= "```\n";
-					file_put_contents( $images_path . '/README.md', $readme_content );
-
-					// Create a sample .htaccess file to allow image serving
-					$htaccess_content  = "# Allow image files to be served\n";
-					$htaccess_content .= "<FilesMatch \"\\.(jpg|jpeg|png|gif|webp|svg)$\">\n";
-					$htaccess_content .= "    Order allow,deny\n";
-					$htaccess_content .= "    Allow from all\n";
-					$htaccess_content .= "</FilesMatch>\n";
-					file_put_contents( $images_path . '/.htaccess', $htaccess_content );
 				} else {
 					$errors[] = 'Failed to create images folder: ' . $structure['imagesPath'] . ' (Full path: ' . $images_path . ')';
 				}
@@ -541,37 +556,6 @@ class RestAPI {
 				if ( wp_mkdir_p( $downloads_path ) ) {
 					$created_folders[] = $structure['downloadsPath'];
 
-					// Create .gitkeep file
-					file_put_contents( $downloads_path . '/.gitkeep', '' );
-
-					// Create sample README file
-					$readme_content  = "# Downloads Directory\n\n";
-					$readme_content .= "Product: {$structure['category']}/{$structure['range']}/{$structure['productCode']}\n";
-					$readme_content .= 'Generated on: ' . current_time( 'Y-m-d H:i:s' ) . "\n\n";
-					$readme_content .= "Place product files in this directory:\n";
-					$readme_content .= "- PDF specifications (.pdf)\n";
-					$readme_content .= "- Installation guides (.pdf)\n";
-					$readme_content .= "- CAD drawings (.dwg)\n";
-					$readme_content .= "- Revit models (.rvt)\n";
-					$readme_content .= "- Other technical documents\n\n";
-					$readme_content .= "Example usage in product data:\n";
-					$readme_content .= "```\n";
-					$readme_content .= "files: {\n";
-					$readme_content .= "  'PDF Specification': '{$structure['downloadsPath']}/spec.pdf',\n";
-					$readme_content .= "  'Installation Guide': '{$structure['downloadsPath']}/install.pdf',\n";
-					$readme_content .= "  'CAD Drawing': '{$structure['downloadsPath']}/drawing.dwg',\n";
-					$readme_content .= "}\n";
-					$readme_content .= "```\n";
-					file_put_contents( $downloads_path . '/README.md', $readme_content );
-
-					// Create .htaccess to protect downloads (force download instead of display)
-					$htaccess_content  = "# Force download of files instead of displaying them\n";
-					$htaccess_content .= "<FilesMatch \"\\.(pdf|dwg|rvt|doc|docx|xls|xlsx)$\">\n";
-					$htaccess_content .= "    Header set Content-Disposition attachment\n";
-					$htaccess_content .= "</FilesMatch>\n\n";
-					$htaccess_content .= "# Prevent directory browsing\n";
-					$htaccess_content .= "Options -Indexes\n";
-					file_put_contents( $downloads_path . '/.htaccess', $htaccess_content );
 				} else {
 					$errors[] = 'Failed to create downloads folder: ' . $structure['downloadsPath'] . ' (Full path: ' . $downloads_path . ')';
 				}
@@ -922,5 +906,97 @@ class RestAPI {
 			default:
 				return $name;
 		}
+	}
+
+	public function test_do_connection( $request ) {
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		$result    = $do_spaces->test_connection();
+
+		return rest_ensure_response( $result );
+	}
+
+	public function fetch_do_assets( $request ) {
+		$prefix = sanitize_text_field( $request->get_param( 'prefix' ) ?: '' );
+
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+
+		if ( ! $do_spaces->is_configured() ) {
+			return new \WP_Error(
+				'not_configured',
+				'Digital Ocean Spaces not configured. Please check your settings.',
+				array( 'status' => 400 )
+			);
+		}
+
+		// $result = $do_spaces->list_objects( $prefix );
+		$result = $do_spaces->get_complete_folder_structure( $prefix );
+
+		if ( ! $result['success'] ) {
+			return new \WP_Error(
+				'fetch_failed',
+				$result['message'],
+				array(
+					'status'  => 500,
+					'details' => $result,
+				)
+			);
+		}
+
+		$structured_data = $do_spaces->organize_objects_by_structure( $result['objects'] );
+
+		return rest_ensure_response(
+			array(
+				'success'         => true,
+				'message'         => $result['message'],
+				'total_folders'   => count( $result['folders'] ),
+				'total_objects'   => count( $result['objects'] ),
+				'raw_folders'     => $result['folders'],
+				'raw_objects'     => $result['objects'],
+				'structured_data' => $result['structured_data'],
+				'debug_info'      => array(
+					'prefix'        => $prefix,
+					'configuration' => $do_spaces->get_configuration(),
+					'categories'    => array_keys( $structured_data ),
+				),
+			)
+		);
+	}
+
+	public function get_do_config( $request ) {
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		$config    = $do_spaces->get_configuration();
+
+		// Don't expose sensitive data
+		// unset( $config['access_key'] );
+		// unset( $config['secret_key'] );
+
+		return rest_ensure_response( $config );
+	}
+
+	public function update_do_config( $request ) {
+		$data = $request->get_json_params();
+
+		if ( isset( $data['bucket_name'] ) ) {
+			update_option( 'urbana_do_bucket_name', sanitize_text_field( $data['bucket_name'] ) );
+		}
+
+		if ( isset( $data['region'] ) ) {
+			update_option( 'urbana_do_region', sanitize_text_field( $data['region'] ) );
+		}
+
+		if ( isset( $data['access_key'] ) ) {
+			update_option( 'urbana_do_access_key', sanitize_text_field( $data['access_key'] ) );
+		}
+
+		if ( isset( $data['secret_key'] ) ) {
+			update_option( 'urbana_do_secret_key', sanitize_text_field( $data['secret_key'] ) );
+		}
+
+		return rest_ensure_response(
+			array(
+				'success' => true,
+				'message' => 'Configuration updated successfully',
+			)
+		);
 	}
 }

@@ -27,6 +27,14 @@ A modern WordPress plugin that provides a product configurator with React + Tail
 - Bulk operations and export functionality
 - Dashboard statistics and analytics
 
+### 4. Settings App (Admin)
+- Comprehensive plugin configuration interface
+- Digital Ocean Spaces integration and management
+- General plugin settings and preferences
+- Connection testing and asset browsing capabilities
+- System information and debug tools
+- Real-time configuration validation
+
 ## Tech Stack
 
 - **Frontend**: React 18, TypeScript, Tailwind CSS v4
@@ -65,7 +73,7 @@ A modern WordPress plugin that provides a product configurator with React + Tail
 Add the stepper form to any page or post using the shortcode:
 
 ```php
-[urbana_product_stepper]
+[urbana_product_stepper id="7"]
 ```
 
 Optional parameters:
@@ -77,9 +85,82 @@ Optional parameters:
 
 After activation, you'll find "Urbana Selector" in the WordPress admin menu with:
 
-1. **Dashboard** - Overview and quick actions
+1. **Settings** - Plugin configuration and Digital Ocean Spaces setup
 2. **Data Builder** - Manage product data structure
 3. **Customer Orders** - View and manage submissions
+
+## Digital Ocean Spaces Integration
+
+The plugin includes comprehensive Digital Ocean Spaces integration for storing and managing product assets. This integration uses S3-compatible API calls without requiring the AWS SDK.
+
+### Setting Up Digital Ocean Spaces
+
+1. **Access Settings**: Navigate to Settings in the WordPress admin panel
+2. **Digital Ocean Configuration**: In the Settings app, locate the Digital Ocean Settings section
+3. **Required Credentials**:
+   - **Endpoint**: Your Digital Ocean Spaces endpoint (e.g., `fra1.digitaloceanspaces.com`)
+   - **Access Key**: Your Digital Ocean Spaces access key
+   - **Secret Key**: Your Digital Ocean Spaces secret key  
+   - **Bucket Name**: The name of your Digital Ocean Spaces bucket
+   - **Region**: Your Digital Ocean region (e.g., `fra1`)
+
+4. **Test Connection**: Use the "Test Connection" button to verify your credentials
+
+### Fetching Assets from Digital Ocean
+
+The Settings app provides a "Fetch from Digital Ocean" feature that:
+
+- **Discovers All Folders**: Includes both empty folders and folders containing files
+- **Structured Analysis**: Displays organized folder hierarchy with file counts
+- **Asset Statistics**: Shows total folders, files, and size information  
+- **Debug Information**: Provides detailed response data for troubleshooting
+- **Real-time Testing**: Tests connection before fetching assets
+
+### Technical Implementation
+
+#### Authentication
+- Uses AWS Signature Version 4 authentication
+- Implements custom signing without AWS SDK dependency
+- Handles query string parameters for S3-compatible requests
+
+#### Folder Discovery
+- Recursive exploration using S3 delimiter parameters
+- Discovers empty folders through systematic bucket traversal
+- Maintains complete folder structure including nested hierarchies
+
+#### API Endpoints
+The plugin exposes REST API endpoints for Digital Ocean integration:
+- `GET /wp-json/urbana/v1/test-do-connection` - Test Digital Ocean connection
+- `GET /wp-json/urbana/v1/fetch-do-assets` - Fetch all assets from Digital Ocean
+- `GET /wp-json/urbana/v1/get-do-config` - Get current Digital Ocean configuration
+- `POST /wp-json/urbana/v1/update-do-config` - Update Digital Ocean settings
+
+#### Error Handling
+- Comprehensive error logging and reporting
+- Connection timeout management
+- Invalid credential detection
+- Network error recovery
+
+### Folder Structure Requirements
+
+For optimal functionality, organize your Digital Ocean Spaces bucket with the following structure:
+```
+your-bucket/
+│── access/
+│   ├── boardwalk/
+│   ├── pathway/
+│	└── ...
+│── bridge/
+│   ├── decorative/
+│   ├── heavy-duty/
+│   └── ...
+│── lighting/
+│── seating/
+│── shelter/
+│── toilet/
+```
+
+The plugin will discover both populated folders (containing files) and empty folders, maintaining the complete structure for data building purposes.
 
 ## Development
 

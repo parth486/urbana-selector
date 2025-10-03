@@ -1,10 +1,9 @@
 <?php
 /**
  * Plugin Name: Urbana Selector
- * Plugin URI: https://example.com/urbana-selector
  * Description: A WordPress plugin for product configurator with React + Tailwind interface.
- * Version: 1.0.0
- * Author: Your Name
+ * Version: 1.0.1
+ * Author: Urbana
  * License: GPL v2 or later
  * Text Domain: urbana-selector
  */
@@ -17,7 +16,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Define plugin constants
 define( 'URBANA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'URBANA_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
-define( 'URBANA_VERSION', '1.0.0' );
+define( 'URBANA_VERSION', '1.0.1' );
+
+// Load Composer autoloader FIRST
+// if ( file_exists( URBANA_PLUGIN_PATH . 'vendor/autoload.php' ) ) {
+// require_once URBANA_PLUGIN_PATH . 'vendor/autoload.php';
+// }
 
 // Autoload classes
 spl_autoload_register(
@@ -48,6 +52,7 @@ class UrbanaSelector {
 
 		// Initialize admin
 		if ( is_admin() ) {
+
 			new Urbana\Admin\AdminInit();
 		}
 

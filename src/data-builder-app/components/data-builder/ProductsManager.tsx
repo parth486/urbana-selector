@@ -32,7 +32,11 @@ import { ImageGalleryManager } from "./product-fields/ImageGalleryManager";
 import { SpecificationManager } from "./product-fields/SpecificationManager";
 import { AssetGenerator } from "../../utils/assetGenerator";
 
-export const ProductsManager: React.FC = ({ stepperID }) => {
+interface ProductsManagerProps {
+  stepperID?: number | null;
+}
+
+export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) => {
   const {
     products,
     productRanges,

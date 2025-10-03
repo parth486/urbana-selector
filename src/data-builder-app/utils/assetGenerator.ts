@@ -24,6 +24,53 @@ export interface GenerationResult {
   };
 }
 
+export interface DigitalOceanResult {
+  success: boolean;
+  message: string;
+  total_folders: number;
+  total_objects: number;
+  raw_folders: string[];
+  raw_objects: DigitalOceanObject[];
+  structured_data: StructuredData;
+  debug_info: {
+    prefix: string;
+    configuration: DigitalOceanConfig;
+    categories: string[];
+  };
+}
+
+export interface DigitalOceanObject {
+  key: string;
+  size: number;
+  last_modified: string;
+  url: string;
+}
+
+export interface StructuredData {
+  [category: string]: {
+    [range: string]: {
+      [productCode: string]: {
+        images: FileInfo[];
+        downloads: FileInfo[];
+      };
+    };
+  };
+}
+
+export interface FileInfo {
+  filename: string;
+  url: string;
+  size: number;
+  modified: string;
+}
+
+export interface DigitalOceanConfig {
+  bucket_name: string;
+  region: string;
+  endpoint: string;
+  configured: boolean;
+}
+
 export class AssetGenerator {
   private static baseAssetsPath = "assets/products";
 
@@ -250,6 +297,151 @@ export class AssetGenerator {
     } catch (error) {
       console.error("Error fetching all product assets:", error);
       throw error;
+    }
+  }
+
+  static async testDigitalOceanConnection(): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch("/wp-json/urbana/v1/digital-ocean/test-connection", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Connection test failed: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error testing Digital Ocean connection:", error);
+      throw error;
+    }
+  }
+
+  static async fetchDigitalOceanAssets(prefix: string = ""): Promise<DigitalOceanResult> {
+    try {
+      const response = await fetch("/wp-json/urbana/v1/digital-ocean/fetch-assets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+        body: JSON.stringify({ prefix }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch assets: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching Digital Ocean assets:", error);
+      throw error;
+    }
+  }
+
+  static async getDigitalOceanConfig(): Promise<DigitalOceanConfig> {
+    try {
+      const response = await fetch("/wp-json/urbana/v1/digital-ocean/config", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get config: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error getting Digital Ocean config:", error);
+      throw error;
+    }
+  }
+
+  static updateProductPathsFromDigitalOcean(
+    products: Product[],
+    structuredData: StructuredData,
+    productGroups: ProductGroup[],
+    productRanges: ProductRange[],
+    relationships: Relationships
+  ): Product[] {
+    return products.map((product) => {
+      // Find the category and range for this product
+      const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => productIds.includes(product.id))?.[0];
+
+      if (!rangeId) return product;
+
+      const range = productRanges.find((r) => r.id === rangeId);
+      if (!range) return product;
+
+      const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => rangeIds.includes(rangeId))?.[0];
+
+      if (!groupId) return product;
+
+      const group = productGroups.find((g) => g.id === groupId);
+      if (!group) return product;
+
+      // Look for matching data in structured data
+      const categoryName = group.name.toLowerCase();
+      const rangeName = range.name.toLowerCase().replace(/\s+/g, "-");
+      const productCode = product.code.toLowerCase();
+
+      const productData = structuredData[categoryName]?.[rangeName]?.[productCode];
+
+      if (!productData) return product;
+
+      // Update image gallery
+      const updatedImageGallery = productData.images.map((img) => img.url);
+
+      // Update files
+      const updatedFiles: Record<string, string> = {};
+      productData.downloads.forEach((file) => {
+        const displayName = AssetGenerator.generateFileDisplayNameFromFilename(file.filename);
+        updatedFiles[displayName] = file.url;
+      });
+
+      return {
+        ...product,
+        imageGallery: updatedImageGallery.length > 0 ? updatedImageGallery : product.imageGallery,
+        files: Object.keys(updatedFiles).length > 0 ? updatedFiles : product.files,
+      };
+    });
+  }
+
+  private static generateFileDisplayNameFromFilename(filename: string): string {
+    const name = filename.replace(/\.[^/.]+$/, ""); // Remove extension
+    const extension = filename.split(".").pop()?.toLowerCase() || "";
+
+    // Convert filename to a more readable format
+    const displayName = name
+      .replace(/[_-]/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+    // Add context based on extension
+    switch (extension) {
+      case "pdf":
+        if (/spec/i.test(name)) return "PDF Specification";
+        if (/install/i.test(name)) return "Installation Guide";
+        if (/manual/i.test(name)) return "User Manual";
+        return `${displayName} (PDF)`;
+      case "dwg":
+        return "CAD Drawing";
+      case "rvt":
+        return "Revit Model";
+      case "doc":
+      case "docx":
+        return `${displayName} (Document)`;
+      default:
+        return displayName;
     }
   }
 }

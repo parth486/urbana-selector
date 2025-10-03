@@ -70,8 +70,9 @@
 	
 }
 
-.urbana-builder-page, .urbana-modal {
- 	p:not([class*="mb"]):not([class*="mt"]) {
+
+.urbana-settings-page, .urbana-modal {
+	p:not([class*="mb"]):not([class*="mt"]) {
        @apply m-0
     }
 
@@ -84,8 +85,11 @@
         @apply m-0;
     }
 
-
 	h1.flex, h2.flex, h3.flex, h4.flex, h5.flex, h6.flex {
 		@apply flex;
+	}
+
+	.urbana-input {
+		@apply w-full p-0 border-0 min-h-0 m-0 outline-0 focus:outline-0 focus:shadow-none font-normal bg-transparent !outline-solid placeholder:text-foreground-500 focus-visible:outline-solid outline-transparent data-[has-start-content=true]:ps-1.5 data-[has-end-content=true]:pe-1.5 data-[type=color]:rounded-none file:cursor-pointer file:bg-transparent file:border-0 autofill:bg-transparent bg-clip-text text-small  group-data-[has-value=true]:text-default-foreground;
 	}
 }

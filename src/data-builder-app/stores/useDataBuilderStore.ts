@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import { productData } from "../../data/productData";
 
 export interface ProductGroup {
   id: string;
@@ -352,8 +353,11 @@ export const useDataBuilderStore = create<DataBuilderState>()(
         } else {
           console.log("No existing data builder data found, extracting from stepper form data");
           // Only extract from stepper form if no data builder data exists
-          if (windowData.stepperFormData) {
+          if (windowData.stepperFormData && windowData.stepperFormData.stepperForm) {
             get().initializeFromProductData(windowData.stepperFormData);
+          } else {
+            get().initializeFromProductData(productData);
+            console.warn("No stepper form data found in window.urbanaAdmin");
           }
         }
       },

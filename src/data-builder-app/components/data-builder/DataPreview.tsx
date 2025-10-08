@@ -171,7 +171,7 @@ export const DataPreview: React.FC = () => {
               <div className="text-sm text-foreground-500">Products</div>
             </div>
             <div className="text-center">
-              <div className={`text-2xl font-bold ${stats.hasIssues ? "text-warning-600" : "text-success-600"}`}>
+              <div className={`flex justify-center text-2xl font-bold ${stats.hasIssues ? "text-warning-600" : "text-success-600"}`}>
                 {stats.hasIssues ? <Icon icon="lucide:alert-triangle" width={32} /> : <Icon icon="lucide:check-circle" width={32} />}
               </div>
               <div className="text-sm text-foreground-500">{stats.hasIssues ? "Has Issues" : "Ready"}</div>

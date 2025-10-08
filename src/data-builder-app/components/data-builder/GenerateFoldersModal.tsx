@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   Modal,
   ModalContent,
@@ -27,15 +27,15 @@ interface GenerateFoldersModalProps {
 export const GenerateFoldersModal: React.FC<GenerateFoldersModalProps> = ({ isOpen, onOpenChange }) => {
   const { productGroups, productRanges, products, relationships, updateProduct } = useDataBuilderStore();
 
-  const [structures, setStructures] = React.useState<AssetStructure[]>([]);
-  const [folderPreview, setFolderPreview] = React.useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = React.useState(false);
-  const [generationResult, setGenerationResult] = React.useState<{
+  const [structures, setStructures] = useState<AssetStructure[]>([]);
+  const [folderPreview, setFolderPreview] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResult, setGenerationResult] = useState<{
     success: boolean;
     message: string;
     created: string[];
   } | null>(null);
-  const [updatePaths, setUpdatePaths] = React.useState(true);
+  const [updatePaths, setUpdatePaths] = useState(true);
 
   // Memoize calculations for performance
   const stats = useMemo(() => {

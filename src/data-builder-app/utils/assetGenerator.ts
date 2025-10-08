@@ -444,4 +444,124 @@ export class AssetGenerator {
         return displayName;
     }
   }
+
+  // Add this new method to the AssetGenerator class
+  static buildCompleteStructureFromDigitalOcean(structuredData: StructuredData): {
+    productGroups: ProductGroup[];
+    productRanges: ProductRange[];
+    products: Product[];
+    relationships: Relationships;
+  } {
+    const productGroups: ProductGroup[] = [];
+    const productRanges: ProductRange[] = [];
+    const products: Product[] = [];
+    const relationships: Relationships = {
+      groupToRanges: {},
+      rangeToProducts: {},
+    };
+
+    // Iterate through structured data from Digital Ocean
+    Object.entries(structuredData).forEach(([categoryName, categoryData]) => {
+      // Skip empty categories
+      if (Array.isArray(categoryData) || Object.keys(categoryData).length === 0) {
+        return;
+      }
+
+      // Create product group
+      const groupId = this.sanitizePathSegment(categoryName);
+      const group: ProductGroup = {
+        id: groupId,
+        name: categoryName,
+        icon: this.getDefaultIconForGroup(categoryName),
+        description: this.getDescriptionForGroup(categoryName),
+      };
+      productGroups.push(group);
+      relationships.groupToRanges[groupId] = [];
+
+      // Iterate through ranges in this category
+      Object.entries(categoryData).forEach(([rangeName, rangeData]) => {
+        // Skip empty ranges
+        if (Array.isArray(rangeData) || Object.keys(rangeData).length === 0) {
+          return;
+        }
+
+        // Create product range
+        const rangeId = this.sanitizePathSegment(rangeName);
+        const range: ProductRange = {
+          id: rangeId,
+          name: rangeName,
+          image: "", // Will be populated if available
+          description: this.getDescriptionForRange(rangeName),
+          tags: this.getTagsForRange(rangeName),
+        };
+        productRanges.push(range);
+        relationships.groupToRanges[groupId].push(rangeId);
+        relationships.rangeToProducts[rangeId] = [];
+
+        // Iterate through products in this range
+        Object.entries(rangeData).forEach(([productCode, productData]) => {
+          const productId = this.sanitizePathSegment(productCode);
+
+          // Build image gallery from Digital Ocean URLs
+          const imageGallery = productData.images.map((img) => img.url);
+
+          // Build files object from Digital Ocean URLs
+          const files: Record<string, string> = {};
+          productData.downloads.forEach((file) => {
+            const displayName = this.generateFileDisplayNameFromFilename(file.filename);
+            files[displayName] = file.url;
+          });
+
+          // Create product
+          const product: Product = {
+            id: productId,
+            code: productCode,
+            name: this.generateProductName(productCode),
+            overview: `${rangeName} ${productCode}`,
+            description: `Product ${productCode} from ${rangeName} range`,
+            specifications: [],
+            imageGallery,
+            files,
+          };
+          products.push(product);
+          relationships.rangeToProducts[rangeId].push(productId);
+        });
+      });
+    });
+
+    return {
+      productGroups,
+      productRanges,
+      products,
+      relationships,
+    };
+  }
+
+  // Helper methods
+  private static getDefaultIconForGroup(groupName: string): string {
+    const name = groupName.toLowerCase();
+    if (name.includes("shelter")) return "lucide:home";
+    if (name.includes("toilet")) return "lucide:door-open";
+    if (name.includes("access")) return "lucide:key";
+    if (name.includes("config")) return "lucide:settings";
+    return "lucide:package";
+  }
+
+  private static getDescriptionForGroup(groupName: string): string {
+    return `${groupName} product category`;
+  }
+
+  private static getDescriptionForRange(rangeName: string): string {
+    return `${rangeName} product range`;
+  }
+
+  private static getTagsForRange(rangeName: string): string[] {
+    return [rangeName.toLowerCase()];
+  }
+
+  private static generateProductName(productCode: string): string {
+    // Convert product code to a readable name
+    // e.g., "k302" -> "K302"
+    return productCode.toUpperCase();
+  }
 }

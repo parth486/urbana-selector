@@ -216,8 +216,10 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
           );
 
           let updatedCount = 0;
+
           updatedProducts.forEach((product) => {
-            const originalProduct = products.find((p) => p.id === product.id);
+            const originalProduct = products.find((p) => p.code.toLowerCase() === product.code.toLowerCase());
+            console.log(originalProduct, product);
             if (
               originalProduct &&
               (JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(product.imageGallery) ||
@@ -227,6 +229,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                 imageGallery: product.imageGallery,
                 files: product.files,
               });
+
               updatedCount++;
             }
           });

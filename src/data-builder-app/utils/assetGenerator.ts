@@ -375,34 +375,90 @@ export class AssetGenerator {
       // Find the category and range for this product
       const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => productIds.includes(product.id))?.[0];
 
-      if (!rangeId) return product;
+      if (!rangeId) {
+        console.warn(`No range found for product: ${product.code}`);
+        return product;
+      }
 
       const range = productRanges.find((r) => r.id === rangeId);
-      if (!range) return product;
+      if (!range) {
+        console.warn(`Range not found for rangeId: ${rangeId}`);
+        return product;
+      }
 
       const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => rangeIds.includes(rangeId))?.[0];
 
-      if (!groupId) return product;
+      if (!groupId) {
+        console.warn(`No group found for range: ${range.name}`);
+        return product;
+      }
 
       const group = productGroups.find((g) => g.id === groupId);
-      if (!group) return product;
+      if (!group) {
+        console.warn(`Group not found for groupId: ${groupId}`);
+        return product;
+      }
 
-      // Look for matching data in structured data
-      const categoryName = group.name.toLowerCase();
-      const rangeName = range.name.toLowerCase().replace(/\s+/g, "-");
-      const productCode = product.code.toLowerCase();
+      // Try to find matching data in structured data
+      // The structured data uses the actual names from Digital Ocean, not sanitized versions
+      let productData = null;
+      let foundCategory = null;
+      let foundRange = null;
 
-      const productData = structuredData[categoryName]?.[rangeName]?.[productCode];
+      // Search through all categories (case-insensitive)
+      for (const [categoryKey, categoryData] of Object.entries(structuredData)) {
+        if (typeof categoryData === "object" && !Array.isArray(categoryData)) {
+          // Check if this category matches our group
+          if (
+            categoryKey.toLowerCase().includes(group.name.toLowerCase()) ||
+            group.name.toLowerCase().includes(categoryKey.toLowerCase())
+          ) {
+            // Search through ranges in this category
+            for (const [rangeKey, rangeData] of Object.entries(categoryData)) {
+              if (typeof rangeData === "object" && !Array.isArray(rangeData)) {
+                // Check if this range matches
+                const rangeMatch = rangeKey.toLowerCase().replace(/[\s-_]/g, "") === range.name.toLowerCase().replace(/[\s-_]/g, "");
 
-      if (!productData) return product;
+                if (rangeMatch) {
+                  // Search for product code (case-insensitive)
+                  for (const [productKey, pData] of Object.entries(rangeData)) {
+                    if (productKey.toLowerCase() === product.code.toLowerCase()) {
+                      productData = pData;
+                      foundCategory = categoryKey;
+                      foundRange = rangeKey;
+                      break;
+                    }
+                  }
+                }
+              }
 
-      // Update image gallery
+              if (productData) break;
+            }
+          }
+        }
+
+        if (productData) break;
+      }
+
+      if (!productData) {
+        console.warn(`No Digital Ocean data found for product: ${product.code} (Group: ${group.name}, Range: ${range.name})`);
+        return product;
+      }
+
+      console.log(`Found match for ${product.code}:`, {
+        category: foundCategory,
+        range: foundRange,
+        images: productData.images.length,
+        downloads: productData.downloads.length,
+      });
+
+      // Update image gallery - preserve all images
       const updatedImageGallery = productData.images.map((img) => img.url);
 
       // Update files
       const updatedFiles: Record<string, string> = {};
       productData.downloads.forEach((file) => {
-        const displayName = AssetGenerator.generateFileDisplayNameFromFilename(file.filename);
+        const displayName = this.generateFileDisplayNameFromFilename(file.filename);
         updatedFiles[displayName] = file.url;
       });
 

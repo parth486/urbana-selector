@@ -143,7 +143,7 @@ export const FileManager: React.FC<FileManagerProps> = ({ files, onFilesChange, 
         <div className="flex justify-between items-center w-full">
           <h4 className="text-md font-semibold">Product Files</h4>
           <div className="flex gap-2">
-            {productCode && (
+            {/* {productCode && (
               <Button
                 size="sm"
                 color="secondary"
@@ -153,7 +153,7 @@ export const FileManager: React.FC<FileManagerProps> = ({ files, onFilesChange, 
               >
                 Fetch from Folder
               </Button>
-            )}
+            )} */}
             <Button
               size="sm"
               color="primary"

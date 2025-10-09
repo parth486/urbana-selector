@@ -159,7 +159,7 @@ export const DataBuilder: React.FC = () => {
             <input type="file" accept=".json" className="hidden" onChange={handleImportData} />
           </label>
           {/* Generate Folders Button */}
-          <Button
+          {/* <Button
             color="secondary"
             variant="flat"
             onPress={onFoldersModalOpen}
@@ -167,7 +167,7 @@ export const DataBuilder: React.FC = () => {
             isDisabled={products.length === 0}
           >
             Generate Folders
-          </Button>
+          </Button> */}
 
           {/* Fetch from Digital Ocean Button */}
           <Button

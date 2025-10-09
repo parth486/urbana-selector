@@ -122,7 +122,7 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
         <div className="flex justify-between items-center w-full">
           <h4 className="text-md font-semibold">Image Gallery</h4>
           <div className="flex gap-2">
-            {productCode && (
+            {/* {productCode && (
               <Button
                 size="sm"
                 color="secondary"
@@ -132,7 +132,7 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
               >
                 Fetch from Folder
               </Button>
-            )}
+            )} */}
             <Button
               size="sm"
               color="primary"

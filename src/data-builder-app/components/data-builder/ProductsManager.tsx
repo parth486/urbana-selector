@@ -308,7 +308,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
           <p className="text-sm text-foreground-500">Manage individual products with detailed specifications</p>
         </div>
         <div className="flex gap-2">
-          <Button
+          {/* <Button
             color="secondary"
             variant="flat"
             onPress={handleFetchAllProductAssets}
@@ -316,7 +316,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
             isDisabled={products.length === 0}
           >
             Refetch All Assets
-          </Button>
+          </Button> */}
           <Button
             color="primary"
             onPress={handleAddProduct}

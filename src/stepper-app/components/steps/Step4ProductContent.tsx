@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback } from "react";
 import { Tabs, Tab, Card, CardBody, Image, Accordion, AccordionItem, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
@@ -21,6 +21,38 @@ interface ProductDetail {
 
 export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) => {
   const productDetails = data.productDetails[productId];
+
+  // Download handler
+  const handleDownload = useCallback(async (fileUrl: string, fileName: string) => {
+    try {
+      // Check if this is a Digital Ocean URL that needs proxying
+      const isDigitalOceanUrl = fileUrl.includes("digitaloceanspaces.com");
+
+      let downloadUrl = fileUrl;
+
+      if (isDigitalOceanUrl) {
+        // Use WordPress proxy endpoint for Digital Ocean files
+        const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
+        proxyUrl.searchParams.set("url", fileUrl);
+        downloadUrl = proxyUrl.toString();
+      }
+
+      // Create a temporary anchor element and trigger download
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      link.style.display = "none";
+      link.target = "_blank"; // Open in new tab as fallback
+
+      // Append to body, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Failed to download file. Please try again or contact support.");
+    }
+  }, []);
 
   // Fallback for products without detailed information
   if (!productDetails) {
@@ -126,18 +158,18 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
                 <p className="text-default-600 mb-4">Download product documentation and technical files:</p>
 
                 <div className="space-y-3">
-                  {Object.entries(productDetails.files).map(([name, file]) => (
+                  {Object.entries(productDetails.files).map(([name, fileUrl]) => (
                     <div
-                      key={file}
+                      key={fileUrl}
                       className="flex items-center justify-between p-3 border border-default-200 rounded-medium hover:border-primary transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-default-100 rounded-medium">
-                          <Icon icon={getFileIcon(file)} className="text-default-600" width={20} />
+                          <Icon icon={getFileIcon(fileUrl)} className="text-default-600" width={20} />
                         </div>
                         <div>
                           <p className="font-medium">{name}</p>
-                          <p className="text-xs text-default-500">{getFileSize(file)}</p>
+                          <p className="text-xs text-default-500">{getFileSize(fileUrl)}</p>
                         </div>
                       </div>
 
@@ -145,7 +177,7 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
                         size="sm"
                         variant="flat"
                         color="primary"
-                        onPress={() => console.log(`Downloading ${file}`)}
+                        onPress={() => handleDownload(fileUrl, getFileNameFromUrl(fileUrl, name))}
                         endContent={<Icon icon="lucide:download" width={16} />}
                       >
                         Download
@@ -251,4 +283,27 @@ function getFileSize(filename: string): string {
   };
 
   return sizes[extension || ""] || sizes["default"];
+}
+
+function getFileNameFromUrl(url: string, displayName: string): string {
+  // Try to extract filename from URL
+  try {
+    const urlParts = url.split("/");
+    const filename = urlParts[urlParts.length - 1];
+
+    // If we got a valid filename with extension, use it
+    if (filename && filename.includes(".")) {
+      return decodeURIComponent(filename);
+    }
+  } catch (error) {
+    console.error("Error extracting filename from URL:", error);
+  }
+
+  // Fallback: use display name and try to add extension from URL
+  const extension = url.split(".").pop()?.toLowerCase();
+  if (extension && !displayName.includes(".")) {
+    return `${displayName}.${extension}`;
+  }
+
+  return displayName;
 }

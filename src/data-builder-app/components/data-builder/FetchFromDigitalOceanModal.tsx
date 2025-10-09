@@ -17,11 +17,11 @@ import {
   Tabs,
   Tab,
   Code,
+  addToast,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { AssetGenerator, DigitalOceanResult, DigitalOceanConfig, StructuredData } from "../../utils/assetGenerator";
 import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
-import { addToast } from "@heroui/react";
 
 interface FetchFromDigitalOceanModalProps {
   isOpen: boolean;
@@ -29,7 +29,19 @@ interface FetchFromDigitalOceanModalProps {
 }
 
 export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProps> = ({ isOpen, onOpenChange }) => {
-  const { productGroups, productRanges, products, relationships, updateProduct } = useDataBuilderStore();
+  const {
+    productGroups,
+    productRanges,
+    products,
+    relationships,
+    updateProduct,
+    addProductGroup,
+    addProductRange,
+    addProduct,
+    linkRangeToGroup,
+    linkProductToRange,
+    resetData,
+  } = useDataBuilderStore();
 
   const [config, setConfig] = useState<DigitalOceanConfig | null>(null);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
@@ -39,6 +51,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
   const [fetchResult, setFetchResult] = useState<DigitalOceanResult | null>(null);
   const [updatePaths, setUpdatePaths] = useState(true);
   const [prefix, setPrefix] = useState("");
+  const [importMode, setImportMode] = useState<"update" | "replace">("update");
 
   // Stats computed from fetch result
   const stats = useMemo(() => {
@@ -49,13 +62,13 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     const { structured_data, total_folders, total_objects } = fetchResult;
     const categories = Object.keys(structured_data).length;
     let ranges = 0;
-    let products = 0;
+    let productsCount = 0;
     let totalFiles = 0;
 
     Object.values(structured_data).forEach((categoryData) => {
       ranges += Object.keys(categoryData).length;
       Object.values(categoryData).forEach((rangeData) => {
-        products += Object.keys(rangeData).length;
+        productsCount += Object.keys(rangeData).length;
         Object.values(rangeData).forEach((productData) => {
           totalFiles += productData.images.length + productData.downloads.length;
         });
@@ -65,7 +78,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     return {
       categories,
       ranges,
-      products,
+      products: productsCount,
       totalFiles,
       totalFolders: total_folders || 0,
     };
@@ -133,40 +146,97 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
       const result = await AssetGenerator.fetchDigitalOceanAssets(prefix);
       setFetchResult(result);
 
-      if (updatePaths && result.success) {
-        const updatedProducts = AssetGenerator.updateProductPathsFromDigitalOcean(
-          products,
-          result.structured_data,
-          productGroups,
-          productRanges,
-          relationships
-        );
+      if (result.success) {
+        if (importMode === "replace") {
+          // Build complete structure from Digital Ocean
+          const structure = AssetGenerator.buildCompleteStructureFromDigitalOcean(result.structured_data);
 
-        let updatedCount = 0;
-        updatedProducts.forEach((product) => {
-          const originalProduct = products.find((p) => p.id === product.id);
-          if (
-            originalProduct &&
-            (JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(product.imageGallery) ||
-              JSON.stringify(originalProduct.files) !== JSON.stringify(product.files))
-          ) {
-            updateProduct(product.id, {
+          // Clear existing data
+          resetData();
+
+          // Add all groups
+          structure.productGroups.forEach((group) => {
+            addProductGroup({
+              name: group.name,
+              icon: group.icon,
+              description: group.description,
+            });
+          });
+
+          // Add all ranges and link to groups
+          structure.productRanges.forEach((range) => {
+            addProductRange({
+              name: range.name,
+              image: range.image,
+              description: range.description,
+              tags: range.tags,
+            });
+
+            // Find which group this range belongs to
+            Object.entries(structure.relationships.groupToRanges).forEach(([groupId, rangeIds]) => {
+              if (rangeIds.includes(range.id)) {
+                linkRangeToGroup(groupId, range.id);
+              }
+            });
+          });
+
+          // Add all products and link to ranges
+          structure.products.forEach((product) => {
+            addProduct({
+              code: product.code,
+              name: product.name,
+              overview: product.overview,
+              description: product.description,
+              specifications: product.specifications,
               imageGallery: product.imageGallery,
               files: product.files,
             });
-            updatedCount++;
-          }
-        });
 
-        addToast({
-          color: "success",
-          title: `Assets fetched successfully! Updated ${updatedCount} products.`,
-        });
-      } else if (result.success) {
-        addToast({
-          color: "success",
-          title: result.message,
-        });
+            // Find which range this product belongs to
+            Object.entries(structure.relationships.rangeToProducts).forEach(([rangeId, productIds]) => {
+              if (productIds.includes(product.id)) {
+                linkProductToRange(rangeId, product.id);
+              }
+            });
+          });
+
+          addToast({
+            color: "success",
+            title: `Structure imported successfully!`,
+            description: `Created ${structure.productGroups.length} groups, ${structure.productRanges.length} ranges, and ${structure.products.length} products.`,
+          });
+        } else {
+          // Update mode - only update existing products
+          const updatedProducts = AssetGenerator.updateProductPathsFromDigitalOcean(
+            products,
+            result.structured_data,
+            productGroups,
+            productRanges,
+            relationships
+          );
+
+          let updatedCount = 0;
+          updatedProducts.forEach((product) => {
+            const originalProduct = products.find((p) => p.id === product.id);
+            if (
+              originalProduct &&
+              (JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(product.imageGallery) ||
+                JSON.stringify(originalProduct.files) !== JSON.stringify(product.files))
+            ) {
+              updateProduct(product.id, {
+                imageGallery: product.imageGallery,
+                files: product.files,
+              });
+              updatedCount++;
+            }
+          });
+
+          addToast({
+            color: "success",
+            title: `Assets fetched successfully!`,
+            description: `Updated ${updatedCount} products with Digital Ocean assets.`,
+          });
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -198,7 +268,22 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     } finally {
       setIsFetching(false);
     }
-  }, [prefix, updatePaths, products, productGroups, productRanges, relationships, updateProduct, config]);
+  }, [
+    prefix,
+    importMode,
+    products,
+    productGroups,
+    productRanges,
+    relationships,
+    updateProduct,
+    addProductGroup,
+    addProductRange,
+    addProduct,
+    linkRangeToGroup,
+    linkProductToRange,
+    resetData,
+    config,
+  ]);
 
   const handleClose = useCallback(() => {
     setFetchResult(null);
@@ -352,14 +437,51 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                         classNames={{ input: "urbana-input" }}
                       />
 
-                      <Checkbox isSelected={updatePaths} onValueChange={setUpdatePaths} isDisabled={isFetching} size="sm">
-                        <div className="ml-2">
-                          <div className="font-medium">Update product paths automatically</div>
-                          <div className="text-xs text-foreground-500">
-                            This will update existing products to use URLs from Digital Ocean Spaces
+                      <Divider />
+
+                      <div className="space-y-3">
+                        <h5 className="font-medium text-sm">Import Mode</h5>
+                        <div className="flex flex-col gap-2">
+                          <Checkbox
+                            isSelected={importMode === "update"}
+                            onValueChange={(checked) => setImportMode(checked ? "update" : "replace")}
+                            isDisabled={isFetching}
+                            size="sm"
+                          >
+                            <div className="ml-2">
+                              <div className="font-medium">Update existing products only</div>
+                              <div className="text-xs text-foreground-500">
+                                Only update assets for products that already exist in your store
+                              </div>
+                            </div>
+                          </Checkbox>
+                          <Checkbox
+                            isSelected={importMode === "replace"}
+                            onValueChange={(checked) => setImportMode(checked ? "replace" : "update")}
+                            isDisabled={isFetching}
+                            size="sm"
+                          >
+                            <div className="ml-2">
+                              <div className="font-medium">Replace entire structure</div>
+                              <div className="text-xs text-foreground-500">
+                                Clear existing data and import complete structure from Digital Ocean
+                              </div>
+                            </div>
+                          </Checkbox>
+                        </div>
+                      </div>
+
+                      {importMode === "replace" && (
+                        <div className="p-3 bg-warning-50 border border-warning-200 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Icon icon="lucide:alert-triangle" width={16} className="text-warning-600 mt-0.5" />
+                            <div className="text-sm text-warning-700">
+                              <strong>Warning:</strong> This will clear all existing product groups, ranges, and products, then import the
+                              complete structure from Digital Ocean Spaces.
+                            </div>
                           </div>
                         </div>
-                      </Checkbox>
+                      )}
                     </div>
                   </CardBody>
                 </Card>

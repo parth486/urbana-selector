@@ -245,6 +245,16 @@ class RestAPI {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		register_rest_route(
+			'urbana/v1',
+			'/proxy-download',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'proxy_download' ),
+				'permission_callback' => '__return_true', // Public endpoint
+			)
+		);
 	}
 
 	public function submit_form( $request ) {
@@ -998,5 +1008,101 @@ class RestAPI {
 				'message' => 'Configuration updated successfully',
 			)
 		);
+	}
+
+
+	public function proxy_download( $request ) {
+		$file_url = $request->get_param( 'url' );
+
+		if ( empty( $file_url ) ) {
+			return new \WP_Error( 'invalid_url', 'File URL is required', array( 'status' => 400 ) );
+		}
+
+		// Validate URL is from Digital Ocean Spaces
+		$parsed_url = parse_url( $file_url );
+		if ( ! $parsed_url || ! str_contains( $parsed_url['host'], 'digitaloceanspaces.com' ) ) {
+			return new \WP_Error( 'invalid_source', 'Only Digital Ocean Spaces URLs are allowed', array( 'status' => 403 ) );
+		}
+
+		// Fetch the file with streaming
+		$response = wp_remote_get(
+			$file_url,
+			array(
+				'timeout'     => 300,
+				'redirection' => 5,
+				'httpversion' => '1.1',
+				'blocking'    => true,
+				'sslverify'   => true,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			wp_send_json_error(
+				array(
+					'message' => 'Download failed: ' . $response->get_error_message(),
+				),
+				500
+			);
+			exit;
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		if ( $status_code !== 200 ) {
+			wp_send_json_error(
+				array(
+					'message' => 'Failed to fetch file. Status: ' . $status_code,
+				),
+				$status_code
+			);
+			exit;
+		}
+
+		// Get file content and metadata
+		$file_content   = wp_remote_retrieve_body( $response );
+		$content_type   = wp_remote_retrieve_header( $response, 'content-type' );
+		$content_length = wp_remote_retrieve_header( $response, 'content-length' );
+		$filename       = basename( $parsed_url['path'] );
+
+		// Validate we got content
+		if ( empty( $file_content ) ) {
+			wp_send_json_error(
+				array(
+					'message' => 'File content is empty',
+				),
+				500
+			);
+			exit;
+		}
+
+		// Clear all output buffers
+		while ( ob_get_level() ) {
+			ob_end_clean();
+		}
+
+		// Prevent any other output
+		if ( ! headers_sent() ) {
+			// Set headers for file download
+			status_header( 200 );
+			nocache_headers();
+
+			header( 'Content-Type: ' . ( $content_type ?: 'application/octet-stream' ) );
+			header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $filename ) . '"' );
+			header( 'Content-Length: ' . ( $content_length ?: strlen( $file_content ) ) );
+			header( 'Content-Transfer-Encoding: binary' );
+			header( 'Accept-Ranges: bytes' );
+			header( 'Cache-Control: private, must-revalidate' );
+			header( 'Pragma: public' );
+			header( 'Expires: 0' );
+		}
+
+		// Output the file content
+		echo $file_content;
+
+		// Flush output and exit
+		if ( function_exists( 'fastcgi_finish_request' ) ) {
+			fastcgi_finish_request();
+		}
+
+		exit;
 	}
 }

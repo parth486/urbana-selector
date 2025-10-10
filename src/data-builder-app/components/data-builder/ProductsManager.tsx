@@ -30,6 +30,7 @@ import { useDataBuilderStore, Product } from "../../stores/useDataBuilderStore";
 import { FileManager } from "./product-fields/FileManager";
 import { ImageGalleryManager } from "./product-fields/ImageGalleryManager";
 import { SpecificationManager } from "./product-fields/SpecificationManager";
+import { OptionsManager } from "./product-fields/OptionsManager";
 import { AssetGenerator } from "../../utils/assetGenerator";
 
 interface ProductsManagerProps {
@@ -47,6 +48,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     linkProductToRange,
     unlinkProductFromRange,
     relationships,
+    productData,
   } = useDataBuilderStore();
 
   const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure();
@@ -59,7 +61,11 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     specifications: [],
     imageGallery: [],
     files: {},
+    options: undefined,
   });
+
+  const [productOptions, setProductOptions] = React.useState<Record<string, Array<{ value: string; imageUrl?: string }>>>({});
+
   const [selectedRanges, setSelectedRanges] = React.useState<Set<string>>(new Set());
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -129,7 +135,9 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       specifications: [],
       imageGallery: [],
       files: {},
+      options: undefined,
     });
+    setProductOptions({});
     setSelectedRanges(new Set());
     setErrors({});
     onOpen();
@@ -146,7 +154,11 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         specifications: [...product.specifications],
         imageGallery: [...product.imageGallery],
         files: { ...product.files },
+        options: product.options,
       });
+
+      // Load product-specific options
+      setProductOptions(product.options || {});
 
       // Find which ranges this product belongs to
       const linkedRanges = new Set<string>();
@@ -230,33 +242,52 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
   }, [formData, products, editingProduct, selectedRanges]);
 
   const handleSubmit = useCallback(() => {
-    if (!validateForm()) return;
-
-    let productId: string;
+    if (!validateForm()) {
+      return;
+    }
 
     if (editingProduct) {
       // Update existing product
-      updateProduct(editingProduct.id, formData);
-      productId = editingProduct.id;
+      updateProduct(editingProduct.id, {
+        ...formData,
+        options: Object.keys(productOptions).length > 0 ? productOptions : undefined,
+      });
 
-      // Update range relationships - remove from all ranges first
-      Object.keys(relationships.rangeToProducts).forEach((rangeId) => {
-        unlinkProductFromRange(rangeId, editingProduct.id);
+      // Update range relationships
+      const currentRanges = new Set(
+        Object.entries(relationships.rangeToProducts)
+          .filter(([_, productIds]) => productIds.includes(editingProduct.id))
+          .map(([rangeId, _]) => rangeId)
+      );
+
+      // Remove from ranges no longer selected
+      currentRanges.forEach((rangeId) => {
+        if (!selectedRanges.has(rangeId)) {
+          unlinkProductFromRange(rangeId, editingProduct.id);
+        }
+      });
+
+      // Add to newly selected ranges
+      selectedRanges.forEach((rangeId) => {
+        if (!currentRanges.has(rangeId)) {
+          linkProductToRange(rangeId, editingProduct.id);
+        }
       });
     } else {
       // Add new product
-      addProduct(formData);
-      // Generate the same ID that the store will use
-      productId = (formData.code || formData.name)
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
-    }
+      const newProductData = {
+        ...formData,
+        options: Object.keys(productOptions).length > 0 ? productOptions : undefined,
+      };
 
-    // Link to selected ranges
-    selectedRanges.forEach((rangeId) => {
-      linkProductToRange(rangeId, productId);
-    });
+      addProduct(newProductData);
+
+      // Link to selected ranges
+      const productId = generateId(formData.code);
+      selectedRanges.forEach((rangeId) => {
+        linkProductToRange(rangeId, productId);
+      });
+    }
 
     onClose();
   }, [
@@ -264,6 +295,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     editingProduct,
     updateProduct,
     formData,
+    productOptions,
     relationships.rangeToProducts,
     unlinkProductFromRange,
     addProduct,
@@ -271,6 +303,14 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     linkProductToRange,
     onClose,
   ]);
+
+  // Helper function
+  const generateId = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+  };
 
   // Get products grouped by their parent ranges
   const getGroupedProducts = useCallback(() => {
@@ -502,6 +542,22 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                       category={currentProductContext?.category}
                       range={currentProductContext?.range}
                     />
+                  </Tab>
+
+                  <Tab
+                    key="options"
+                    title={
+                      <div className="flex items-center gap-2">
+                        <span>Options</span>
+                        {Object.keys(productOptions).length > 0 && (
+                          <Chip size="sm" variant="flat">
+                            {Object.keys(productOptions).length}
+                          </Chip>
+                        )}
+                      </div>
+                    }
+                  >
+                    <OptionsManager options={productOptions} onOptionsChange={setProductOptions} />
                   </Tab>
                 </Tabs>
               </ModalBody>

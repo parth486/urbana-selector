@@ -25,12 +25,17 @@ interface DigitalOceanObject {
   url: string;
 }
 
-interface StructuredData {
+export interface StructuredData {
   [category: string]: {
     [range: string]: {
       [productCode: string]: {
         images: FileInfo[];
         downloads: FileInfo[];
+        img_conf?: {
+          [optionGroup: string]: {
+            [optionValue: string]: FileInfo;
+          };
+        };
       };
     };
   };

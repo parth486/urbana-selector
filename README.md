@@ -7,6 +7,7 @@ A modern WordPress plugin that provides a product configurator with React + Tail
 ### 1. Stepper Form (Frontend)
 - Multi-step product selection process
 - Product Group → Product Range → Individual Product → Content → Options → Contact
+- Product-specific configuration options with image previews
 - Built with React 18, Zustand state management, and HeroUI components
 - Responsive design with Tailwind CSS
 - Form submissions stored in database with email notifications
@@ -15,7 +16,9 @@ A modern WordPress plugin that provides a product configurator with React + Tail
 - Visual interface to create and manage product data
 - Drag-and-drop functionality with @dnd-kit
 - Product Groups, Ranges, and Individual Products management
+- Product-specific options management with image associations
 - Relationships manager to connect products
+- Digital Ocean Spaces integration for asset management
 - Data preview and export/import functionality
 - Real-time updates to the frontend stepper
 
@@ -89,6 +92,41 @@ After activation, you'll find "Urbana Selector" in the WordPress admin menu with
 2. **Data Builder** - Manage product data structure
 3. **Customer Orders** - View and manage submissions
 
+## Product Options System
+
+The plugin now supports **product-specific configuration options** with associated images:
+
+### Product-Specific Options
+- Each product can have its own unique set of configuration options
+- Options are organized into groups (e.g., "Post Material", "Roof Option", "Screen")
+- Each option value can have an associated image for visual selection
+- Options are automatically extracted from Digital Ocean Spaces `img_conf` folders
+
+### Option Management
+- **Data Builder**: Configure options per product with image associations
+- **Frontend Stepper**: Dynamic option selection with image previews
+- **Step 5**: Shows only options available for the selected product
+- Products without options skip Step 5 automatically
+
+### Digital Ocean Structure for Options
+```
+your-bucket/
+├── category/
+│   ├── range/
+│   │   ├── product-code/
+│   │   │   ├── img/              # Product images
+│   │   │   ├── download/         # Product files
+│   │   │   └── img_conf/         # Configuration options
+│   │   │       ├── Post Material/
+│   │   │       │   ├── Aluminum.jpg
+│   │   │       │   └── Steel.jpg
+│   │   │       ├── Roof Option/
+│   │   │       │   ├── Flat.jpg
+│   │   │       │   └── Pitched.jpg
+│   │   │       └── Screen/
+│   │   │           └── Mesh.jpg
+```
+
 ## Digital Ocean Spaces Integration
 
 The plugin includes comprehensive Digital Ocean Spaces integration for storing and managing product assets. This integration uses S3-compatible API calls without requiring the AWS SDK.
@@ -108,13 +146,75 @@ The plugin includes comprehensive Digital Ocean Spaces integration for storing a
 
 ### Fetching Assets from Digital Ocean
 
-The Settings app provides a "Fetch from Digital Ocean" feature that:
+The Data Builder provides a "Fetch from Digital Ocean" feature that:
 
-- **Discovers All Folders**: Includes both empty folders and folders containing files
-- **Structured Analysis**: Displays organized folder hierarchy with file counts
-- **Asset Statistics**: Shows total folders, files, and size information  
-- **Debug Information**: Provides detailed response data for troubleshooting
-- **Real-time Testing**: Tests connection before fetching assets
+- **Discovers All Assets**: Images, downloads, and configuration options
+- **Product-Specific Options**: Automatically extracts options from `img_conf` folders
+- **Structured Import**: Organizes assets by category, range, and product
+- **Update or Replace**: Choose to update existing products or replace all data
+- **Real-time Preview**: Shows what will be imported before confirming
+
+### Asset Organization
+
+#### Standard Assets
+- **Images**: Stored in `product-code/img/` folder
+- **Downloads**: Stored in `product-code/download/` folder
+
+#### Configuration Options
+- **Location**: `product-code/img_conf/` folder
+- **Structure**: Organized by option group name (folder) and option value (image file)
+- **Format**: Each image filename becomes an option value
+- **Example**:
+  ```
+  k302/img_conf/
+  ├── Post Material/
+  │   ├── Aluminum.jpg    → Option: Post Material = "Aluminum"
+  │   └── Steel.jpg       → Option: Post Material = "Steel"
+  └── Roof Option/
+      ├── Flat.jpg        → Option: Roof Option = "Flat"
+      └── Pitched.jpg     → Option: Roof Option = "Pitched"
+  ```
+
+### Folder Structure Requirements
+
+For optimal functionality, organize your Digital Ocean Spaces bucket with the following structure:
+
+```
+your-bucket/
+├── access/
+│   ├── boardwalk/
+│   │   ├── k302/
+│   │   │   ├── img/
+│   │   │   ├── download/
+│   │   │   └── img_conf/
+│   │   │       ├── Post Material/
+│   │   │       ├── Roof Option/
+│   │   │       └── Screen/
+│   │   └── whyl63/
+│   │       ├── img/
+│   │       └── download/
+│   ├── pathway/
+│   └── ...
+├── bridge/
+│   ├── decorative/
+│   ├── heavy-duty/
+│   └── ...
+└── ...
+```
+
+### Import Modes
+
+1. **Update Mode**: 
+   - Updates assets for existing products only
+   - Preserves product names, descriptions, and specifications
+   - Updates images, files, and options from Digital Ocean
+   - Safe for refreshing asset URLs
+
+2. **Replace Mode**:
+   - Clears all existing data
+   - Creates complete structure from Digital Ocean
+   - Imports groups, ranges, products, and options
+   - Use when starting fresh or restructuring
 
 ### Technical Implementation
 
@@ -127,6 +227,7 @@ The Settings app provides a "Fetch from Digital Ocean" feature that:
 - Recursive exploration using S3 delimiter parameters
 - Discovers empty folders through systematic bucket traversal
 - Maintains complete folder structure including nested hierarchies
+- Extracts configuration options from `img_conf` subfolders
 
 #### API Endpoints
 The plugin exposes REST API endpoints for Digital Ocean integration:
@@ -134,33 +235,6 @@ The plugin exposes REST API endpoints for Digital Ocean integration:
 - `GET /wp-json/urbana/v1/fetch-do-assets` - Fetch all assets from Digital Ocean
 - `GET /wp-json/urbana/v1/get-do-config` - Get current Digital Ocean configuration
 - `POST /wp-json/urbana/v1/update-do-config` - Update Digital Ocean settings
-
-#### Error Handling
-- Comprehensive error logging and reporting
-- Connection timeout management
-- Invalid credential detection
-- Network error recovery
-
-### Folder Structure Requirements
-
-For optimal functionality, organize your Digital Ocean Spaces bucket with the following structure:
-```
-your-bucket/
-│── access/
-│   ├── boardwalk/
-│   ├── pathway/
-│	└── ...
-│── bridge/
-│   ├── decorative/
-│   ├── heavy-duty/
-│   └── ...
-│── lighting/
-│── seating/
-│── shelter/
-│── toilet/
-```
-
-The plugin will discover both populated folders (containing files) and empty folders, maintaining the complete structure for data building purposes.
 
 ## Development
 
@@ -178,6 +252,7 @@ urbana/
 │   ├── stepper-app/            # Frontend stepper form
 │   ├── data-builder-app/       # Admin data management
 │   ├── admin-orders-app/       # Admin orders management
+│   ├── settings-app/           # Admin settings
 │   └── data/productData.ts     # Default product data
 ├── assets/dist/                # Built assets (auto-generated)
 ├── package.json                # Dependencies and scripts
@@ -197,7 +272,7 @@ urbana/
 Each app uses Zustand for state management:
 
 - **Stepper**: `useStepperStore` - Manages form progress and selections with persistence
-- **Data Builder**: `useDataBuilderStore` - Manages product data CRUD
+- **Data Builder**: `useDataBuilderStore` - Manages product data CRUD with options
 - **Admin Orders**: `useAdminOrdersStore` - Manages submissions and filters
 
 #### Persistence
@@ -210,6 +285,51 @@ The stepper form uses Zustand's persist middleware to automatically save user se
 - The form state persists across browser sessions
 
 The persisted data includes the current step and all user selections (product group, range, individual product, options, and contact information).
+
+### Product Data Structure
+
+The plugin uses a comprehensive data structure:
+
+```typescript
+{
+  id: number,
+  stepperForm: {
+    steps: [
+      {
+        step: 1,
+        title: "Select Product Group",
+        categories: string[]  // Product group names
+      },
+      {
+        step: 2,
+        title: "Select Product Range",
+        ranges: Record<string, string[]>  // Group → Range names
+      },
+      {
+        step: 3,
+        title: "Select Individual Product",
+        products: Record<string, string[]>  // Range → Product codes
+      },
+      {
+        step: 4,
+        title: "View Product Content",
+        productDetails: Record<string, ProductContent>  // Code → Details
+      },
+      {
+        step: 5,
+        title: "Configure Options",
+        options: Record<string, OptionValue[]>,  // Global options
+        productOptions: Record<string, Record<string, OptionValue[]>>  // Product-specific
+      },
+      {
+        step: 6,
+        title: "Contact Information",
+        fields: FormField[]
+      }
+    ]
+  }
+}
+```
 
 ### API Endpoints
 
@@ -233,24 +353,6 @@ The plugin creates the following REST API endpoints:
 
 The plugin uses HeroUI's theming system. You can customize colors and appearance by modifying the Tailwind configuration or by adding custom CSS.
 
-### Product Data Structure
-
-Product data follows this structure:
-```javascript
-{
-  stepperForm: {
-    steps: [
-      {
-        step: 1,
-        title: "Select Product Group",
-        categories: ["Shelter", "Toilet", "Bridge", ...]
-      },
-      // ... more steps
-    ]
-  }
-}
-```
-
 ### Adding Custom Steps
 
 1. Update the product data structure
@@ -265,6 +367,7 @@ Product data follows this structure:
 - Frontend state is persisted to prevent data loss
 - Lazy loading for non-critical components
 - Optimized bundle sizes with tree shaking
+- Memoized computations for data transformations
 
 ## Security
 

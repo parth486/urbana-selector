@@ -52,6 +52,11 @@ export interface StructuredData {
       [productCode: string]: {
         images: FileInfo[];
         downloads: FileInfo[];
+        img_conf?: {
+          [optionGroup: string]: {
+            [optionValue: string]: FileInfo;
+          };
+        };
       };
     };
   };
@@ -400,7 +405,6 @@ export class AssetGenerator {
       }
 
       // Try to find matching data in structured data
-      // The structured data uses the actual names from Digital Ocean, not sanitized versions
       let productData = null;
       let foundCategory = null;
       let foundRange = null;
@@ -450,6 +454,7 @@ export class AssetGenerator {
         range: foundRange,
         images: productData.images.length,
         downloads: productData.downloads.length,
+        optionGroups: productData.img_conf ? Object.keys(productData.img_conf).length : 0,
       });
 
       // Update image gallery - preserve all images
@@ -462,10 +467,26 @@ export class AssetGenerator {
         updatedFiles[displayName] = file.url;
       });
 
+      // Build product-specific options from img_conf
+      const productOptions: Record<string, Array<{ value: string; imageUrl: string }>> = {};
+
+      if (productData.img_conf) {
+        Object.entries(productData.img_conf).forEach(([optionGroup, optionValues]) => {
+          productOptions[optionGroup] = Object.entries(optionValues).map(([optionValue, fileInfo]) => ({
+            value: optionValue,
+            imageUrl: fileInfo.url,
+          }));
+
+          // Sort options by value for consistency
+          productOptions[optionGroup].sort((a, b) => a.value.localeCompare(b.value));
+        });
+      }
+
       return {
         ...product,
         imageGallery: updatedImageGallery.length > 0 ? updatedImageGallery : product.imageGallery,
         files: Object.keys(updatedFiles).length > 0 ? updatedFiles : product.files,
+        options: Object.keys(productOptions).length > 0 ? productOptions : product.options,
       };
     });
   }
@@ -516,70 +537,66 @@ export class AssetGenerator {
       rangeToProducts: {},
     };
 
-    // Iterate through structured data from Digital Ocean
+    // Iterate through categories (product groups)
     Object.entries(structuredData).forEach(([categoryName, categoryData]) => {
-      // Skip empty categories
-      if (Array.isArray(categoryData) || Object.keys(categoryData).length === 0) {
-        return;
-      }
-
-      // Create product group
       const groupId = this.sanitizePathSegment(categoryName);
-      const group: ProductGroup = {
+
+      productGroups.push({
         id: groupId,
         name: categoryName,
         icon: this.getDefaultIconForGroup(categoryName),
         description: this.getDescriptionForGroup(categoryName),
-      };
-      productGroups.push(group);
+      });
+
       relationships.groupToRanges[groupId] = [];
 
-      // Iterate through ranges in this category
+      // Iterate through ranges within category
       Object.entries(categoryData).forEach(([rangeName, rangeData]) => {
-        // Skip empty ranges
-        if (Array.isArray(rangeData) || Object.keys(rangeData).length === 0) {
-          return;
-        }
-
-        // Create product range
         const rangeId = this.sanitizePathSegment(rangeName);
-        const range: ProductRange = {
+
+        productRanges.push({
           id: rangeId,
           name: rangeName,
-          image: "", // Will be populated if available
+          image: "",
           description: this.getDescriptionForRange(rangeName),
           tags: this.getTagsForRange(rangeName),
-        };
-        productRanges.push(range);
+        });
+
         relationships.groupToRanges[groupId].push(rangeId);
         relationships.rangeToProducts[rangeId] = [];
 
-        // Iterate through products in this range
+        // Iterate through products within range
         Object.entries(rangeData).forEach(([productCode, productData]) => {
           const productId = this.sanitizePathSegment(productCode);
 
-          // Build image gallery from Digital Ocean URLs
-          const imageGallery = productData.images.map((img) => img.url);
+          // Build product-specific options from img_conf
+          const productOptions: Record<string, Array<{ value: string; imageUrl: string }>> = {};
 
-          // Build files object from Digital Ocean URLs
-          const files: Record<string, string> = {};
-          productData.downloads.forEach((file) => {
-            const displayName = this.generateFileDisplayNameFromFilename(file.filename);
-            files[displayName] = file.url;
-          });
+          if (productData.img_conf) {
+            Object.entries(productData.img_conf).forEach(([optionGroup, optionValues]) => {
+              productOptions[optionGroup] = Object.entries(optionValues).map(([optionValue, fileInfo]) => ({
+                value: optionValue,
+                imageUrl: fileInfo.url,
+              }));
+            });
+          }
 
-          // Create product
-          const product: Product = {
+          products.push({
             id: productId,
             code: productCode,
             name: this.generateProductName(productCode),
-            overview: `${rangeName} ${productCode}`,
-            description: `Product ${productCode} from ${rangeName} range`,
+            overview: `Overview for ${productCode}`,
+            description: `Detailed description for ${productCode}`,
             specifications: [],
-            imageGallery,
-            files,
-          };
-          products.push(product);
+            imageGallery: productData.images.map((img) => img.url),
+            files: productData.downloads.reduce((acc, file) => {
+              const displayName = this.generateFileDisplayNameFromFilename(file.filename);
+              acc[displayName] = file.url;
+              return acc;
+            }, {} as Record<string, string>),
+            options: Object.keys(productOptions).length > 0 ? productOptions : undefined,
+          });
+
           relationships.rangeToProducts[rangeId].push(productId);
         });
       });

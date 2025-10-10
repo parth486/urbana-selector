@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import { Card, CardBody } from "@heroui/react";
 import { StepperNavigation } from "./StepperNavigation";
 import { StepperProgress } from "./StepperProgress";
@@ -31,10 +31,46 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
 
   const totalSteps = data.stepperForm.steps.length;
 
-  const handleSubmit = async () => {
+  // Get valid options for the selected product
+  const validProductOptions = useMemo(() => {
+    if (!selections.individualProduct) {
+      return {};
+    }
+
+    const step5Data = data.stepperForm.steps[4]; // Step 5 (index 4)
+    const productOptions = step5Data?.productOptions?.[selections.individualProduct];
+
+    if (!productOptions) {
+      return {};
+    }
+
+    // Filter selections.options to only include valid option groups for this product
+    const filtered: Record<string, string> = {};
+    const validOptionGroups = Object.keys(productOptions);
+
+    Object.entries(selections.options).forEach(([key, value]) => {
+      if (validOptionGroups.includes(key)) {
+        filtered[key] = value;
+      }
+    });
+
+    return filtered;
+  }, [selections.individualProduct, selections.options, data.stepperForm.steps]);
+
+  const handleSubmit = useCallback(async () => {
     useStepperStore.getState().setSubmitting(true);
 
     try {
+      // Prepare submission data with filtered options
+      const submissionData = {
+        productGroup: selections.productGroup,
+        productRange: selections.productRange,
+        individualProduct: selections.individualProduct,
+        options: validProductOptions, // Use filtered options
+        contactInfo: selections.contactInfo,
+      };
+
+      console.log("Submitting form data:", submissionData);
       // Make API call to submit the form
       const response = await fetch("/wp-json/urbana/v1/submit-form", {
         method: "POST",
@@ -43,7 +79,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           "X-WP-Nonce": (window as any).urbanaPublic?.nonce || "",
         },
         body: JSON.stringify({
-          selections,
+          selections: submissionData,
           submittedAt: new Date().toISOString(),
         }),
       });
@@ -59,7 +95,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
     } finally {
       useStepperStore.getState().setSubmitting(false);
     }
-  };
+  }, [selections, validProductOptions]);
 
   const handleGoToStep = (step: number) => {
     goToStep(step);
@@ -83,7 +119,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step1ProductGroup
             data={{
               categories: stepData?.categories || [],
-              productGroups: stepData?.productGroups || [], // Pass the enhanced data
+              productGroups: stepData?.productGroups || [],
             }}
             selection={selections.productGroup || null}
             onSelect={(value) => updateSelection("productGroup", value)}
@@ -94,7 +130,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step2ProductRange
             data={{
               ranges: stepData?.ranges || {},
-              productRanges: stepData?.productRanges || [], // Pass the enhanced data
+              productRanges: stepData?.productRanges || [],
             }}
             productGroup={selections.productGroup || ""}
             selection={selections.productRange || null}
@@ -106,7 +142,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           <Step3IndividualProduct
             data={{
               products: stepData?.products || {},
-              productsData: stepData?.productsData || [], // Pass the enhanced data
+              productsData: stepData?.productsData || [],
             }}
             productRange={selections.productRange || ""}
             selection={selections.individualProduct || null}
@@ -123,14 +159,18 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           />
         );
       case 5:
+        console.log(stepData, selections.options);
         return (
           <Step5ConfigureOptions
             data={{
               options: stepData?.options || {},
+              productOptions: stepData?.productOptions || {},
+              productDetails: data.stepperForm.steps[3]?.productDetails || {},
               dynamicUpdates: stepData?.dynamicUpdates || { updateImages: false, updateFiles: false },
             }}
             options={selections.options || {}}
             onOptionsChange={(value) => updateSelection("options", value)}
+            selectedProductCode={selections.individualProduct || undefined}
           />
         );
       case 6:

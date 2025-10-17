@@ -41,6 +41,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     linkRangeToGroup,
     linkProductToRange,
     resetData,
+    updateOptions,
   } = useDataBuilderStore();
 
   const [config, setConfig] = useState<DigitalOceanConfig | null>(null);
@@ -56,7 +57,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
   // Stats computed from fetch result
   const stats = useMemo(() => {
     if (!fetchResult) {
-      return { categories: 0, ranges: 0, products: 0, totalFiles: 0, totalFolders: 0 };
+      return { categories: 0, ranges: 0, products: 0, totalFiles: 0, totalFolders: 0, optionGroups: 0, optionImages: 0 };
     }
 
     const { structured_data, total_folders, total_objects } = fetchResult;
@@ -64,6 +65,8 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     let ranges = 0;
     let productsCount = 0;
     let totalFiles = 0;
+    let optionGroups = 0;
+    let optionImages = 0;
 
     Object.values(structured_data).forEach((categoryData) => {
       ranges += Object.keys(categoryData).length;
@@ -71,6 +74,13 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
         productsCount += Object.keys(rangeData).length;
         Object.values(rangeData).forEach((productData) => {
           totalFiles += productData.images.length + productData.downloads.length;
+
+          if (productData.img_conf) {
+            optionGroups += Object.keys(productData.img_conf).length;
+            Object.values(productData.img_conf).forEach((optionGroup) => {
+              optionImages += Object.keys(optionGroup).length;
+            });
+          }
         });
       });
     });
@@ -81,6 +91,8 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
       products: productsCount,
       totalFiles,
       totalFolders: total_folders || 0,
+      optionGroups,
+      optionImages,
     };
   }, [fetchResult]);
 
@@ -180,7 +192,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
             });
           });
 
-          // Add all products and link to ranges
+          // Add all products with their specific options and link to ranges
           structure.products.forEach((product) => {
             addProduct({
               code: product.code,
@@ -190,6 +202,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
               specifications: product.specifications,
               imageGallery: product.imageGallery,
               files: product.files,
+              options: product.options, // Product-specific options
             });
 
             // Find which range this product belongs to
@@ -203,7 +216,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
           addToast({
             color: "success",
             title: `Structure imported successfully!`,
-            description: `Created ${structure.productGroups.length} groups, ${structure.productRanges.length} ranges, and ${structure.products.length} products.`,
+            description: `Created ${structure.productGroups.length} groups, ${structure.productRanges.length} ranges, and ${structure.products.length} products with their options.`,
           });
         } else {
           // Update mode - only update existing products
@@ -215,29 +228,36 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
             relationships
           );
 
-          let updatedCount = 0;
+          console.log(result.structured_data);
+          console.log("Updated Products:", updatedProducts);
 
+          let updatedCount = 0;
           updatedProducts.forEach((product) => {
             const originalProduct = products.find((p) => p.code.toLowerCase() === product.code.toLowerCase());
-            console.log(originalProduct, product);
-            if (
-              originalProduct &&
-              (JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(product.imageGallery) ||
-                JSON.stringify(originalProduct.files) !== JSON.stringify(product.files))
-            ) {
-              updateProduct(product.id, {
-                imageGallery: product.imageGallery,
-                files: product.files,
-              });
 
-              updatedCount++;
+            if (originalProduct) {
+              // Check if any data has changed
+              const hasChanges =
+                JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(product.imageGallery) ||
+                JSON.stringify(originalProduct.files) !== JSON.stringify(product.files) ||
+                JSON.stringify(originalProduct.options) !== JSON.stringify(product.options);
+
+              if (hasChanges) {
+                updateProduct(product.id, {
+                  imageGallery: product.imageGallery,
+                  files: product.files,
+                  options: product.options,
+                });
+
+                updatedCount++;
+              }
             }
           });
 
           addToast({
             color: "success",
             title: `Assets fetched successfully!`,
-            description: `Updated ${updatedCount} products with Digital Ocean assets.`,
+            description: `Updated ${updatedCount} products with Digital Ocean assets and their specific options.`,
           });
         }
       }
@@ -285,8 +305,51 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
     linkRangeToGroup,
     linkProductToRange,
     resetData,
+    updateOptions,
     config,
   ]);
+
+  // Helper function to build options from structured data
+  const buildOptionsFromStructuredData = (structuredData: StructuredData): Record<string, Array<{ value: string; imageUrl: string }>> => {
+    const optionsMap: Record<string, Array<{ value: string; imageUrl: string }>> = {};
+
+    // Iterate through all products to collect img_conf data
+    Object.values(structuredData).forEach((categoryData) => {
+      Object.values(categoryData).forEach((rangeData) => {
+        Object.values(rangeData).forEach((productData) => {
+          if (productData.img_conf) {
+            // For each option group in img_conf
+            Object.entries(productData.img_conf).forEach(([optionGroup, optionValues]) => {
+              // Initialize the option group if it doesn't exist
+              if (!optionsMap[optionGroup]) {
+                optionsMap[optionGroup] = [];
+              }
+
+              // Add each option value with its image URL
+              Object.entries(optionValues).forEach(([optionValue, fileInfo]) => {
+                // Check if this option value already exists
+                const existingOption = optionsMap[optionGroup].find((opt) => opt.value === optionValue);
+
+                if (!existingOption) {
+                  optionsMap[optionGroup].push({
+                    value: optionValue,
+                    imageUrl: fileInfo.url,
+                  });
+                }
+              });
+            });
+          }
+        });
+      });
+    });
+
+    // Sort options for consistency
+    Object.keys(optionsMap).forEach((optionGroup) => {
+      optionsMap[optionGroup].sort((a, b) => a.value.localeCompare(b.value));
+    });
+
+    return optionsMap;
+  };
 
   const handleClose = useCallback(() => {
     setFetchResult(null);
@@ -331,6 +394,15 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                       <span>Downloads: {productData.downloads.length}</span>
                       <Chip size="sm" variant="flat" color="secondary">
                         {productData.downloads.length}
+                      </Chip>
+                    </div>
+                  )}
+                  {productData.img_conf && Object.keys(productData.img_conf).length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Icon icon="lucide:settings" width={12} className="text-warning" />
+                      <span>Option Groups: {Object.keys(productData.img_conf).length}</span>
+                      <Chip size="sm" variant="flat" color="warning">
+                        {Object.keys(productData.img_conf).length}
                       </Chip>
                     </div>
                   )}
@@ -532,7 +604,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                             <p className="text-sm">{fetchResult.message}</p>
 
                             {fetchResult.success && (
-                              <div className="grid grid-cols-5 gap-4 text-center mt-4">
+                              <div className="grid grid-cols-7 gap-4 text-center mt-4">
                                 <div>
                                   <div className="text-2xl font-bold text-primary">{stats.categories}</div>
                                   <div className="text-sm text-foreground-500">Categories</div>
@@ -552,6 +624,14 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                                 <div>
                                   <div className="text-2xl font-bold text-danger">{stats.totalFolders}</div>
                                   <div className="text-sm text-foreground-500">Folders</div>
+                                </div>
+                                <div>
+                                  <div className="text-2xl font-bold text-primary">{stats.optionGroups}</div>
+                                  <div className="text-sm text-foreground-500">Option Groups</div>
+                                </div>
+                                <div>
+                                  <div className="text-2xl font-bold text-secondary">{stats.optionImages}</div>
+                                  <div className="text-sm text-foreground-500">Option Images</div>
                                 </div>
                               </div>
                             )}
@@ -652,7 +732,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
                           </li>
                           <li className="flex items-start gap-2">
                             <Icon icon="lucide:check" width={14} className="mt-0.5 text-success" />
-                            Type folders should be either "images" or "downloads"
+                            Type folders should be either "images" or "downloads" or "img_conf"
                           </li>
                           <li className="flex items-start gap-2">
                             <Icon icon="lucide:check" width={14} className="mt-0.5 text-success" />

@@ -1,17 +1,15 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   Card,
   CardBody,
   CardHeader,
   Button,
-  Code,
   Tabs,
   Tab,
   Accordion,
   AccordionItem,
   Chip,
   Avatar,
-  Divider,
   Textarea,
   Modal,
   ModalContent,
@@ -31,59 +29,66 @@ export const DataPreview: React.FC = () => {
   const [exportedData, setExportedData] = React.useState<string>("");
   const [previewMode, setPreviewMode] = React.useState<"structure" | "json">("structure");
 
-  // Generate the stepper configuration
-  const generateStepperConfig = (): ProductDataStructure => {
-    const steps = productGroups.map((group, index) => {
-      const groupRanges = relationships.groupToRanges[group.id] || [];
-      const categories = groupRanges.map((rangeId) => {
-        const range = productRanges.find((r) => r.id === rangeId);
-        return range?.name || "Unknown Range";
-      });
+  // Generate the stepper configuration using the exportData function
+  const stepperConfig = useMemo(() => exportData(), [exportData]);
 
-      // Build products for this step's ranges
-      const stepProducts: Record<string, any> = {};
-      groupRanges.forEach((rangeId) => {
-        const range = productRanges.find((r) => r.id === rangeId);
-        if (range) {
-          const rangeProducts = relationships.rangeToProducts[rangeId] || [];
-          stepProducts[range.name] = rangeProducts.map((productId) => {
-            const product = products.find((p) => p.id === productId);
-            return {
-              id: product?.id || productId,
-              code: product?.code || "",
-              name: product?.name || "Unknown Product",
-              overview: product?.overview || "",
-              description: product?.description || "",
-              specifications: product?.specifications || [],
-              imageGallery: product?.imageGallery || [],
-              files: product?.files || {},
-            };
+  // Calculate all products across all steps with their options
+  const allProductsByCategory = useMemo(() => {
+    const productsByCategory: Record<string, any[]> = {};
+
+    stepperConfig.stepperForm.steps.forEach((step) => {
+      // Step 3 contains the products organized by range
+      if (step.step === 3 && step.products) {
+        Object.entries(step.products).forEach(([rangeName, productCodes]) => {
+          if (!productsByCategory[rangeName]) {
+            productsByCategory[rangeName] = [];
+          }
+
+          // For each product code, get full product details from step 4
+          (productCodes as string[]).forEach((productCode) => {
+            const productDetails = stepperConfig.stepperForm.steps[3]?.productDetails?.[productCode];
+            const productOptions = stepperConfig.stepperForm.steps[4]?.productOptions?.[productCode];
+
+            if (productDetails) {
+              productsByCategory[rangeName].push({
+                code: productCode,
+                ...productDetails,
+                options: productOptions || {},
+                hasOptions: productOptions && Object.keys(productOptions).length > 0,
+              });
+            }
           });
-        }
-      });
-
-      return {
-        step: index + 1,
-        title: group.name,
-        categories: categories.length > 0 ? categories : undefined,
-        products: stepProducts,
-      };
+        });
+      }
     });
 
-    return {
-      stepperForm: {
-        steps,
-      },
-    };
-  };
+    return productsByCategory;
+  }, [stepperConfig]);
 
-  const handleExport = () => {
+  const stats = useMemo(() => {
+    const totalProducts = Object.values(allProductsByCategory).reduce((sum, products) => sum + products.length, 0);
+
+    const productsWithOptions = Object.values(allProductsByCategory).reduce(
+      (sum, products) => sum + products.filter((p: any) => p.hasOptions).length,
+      0
+    );
+
+    return {
+      totalSteps: stepperConfig.stepperForm.steps.length,
+      totalCategories: Object.keys(allProductsByCategory).length,
+      totalProducts,
+      productsWithOptions,
+      hasIssues: stepperConfig.stepperForm.steps[1]?.ranges && Object.keys(stepperConfig.stepperForm.steps[1].ranges).length === 0,
+    };
+  }, [stepperConfig, allProductsByCategory]);
+
+  const handleExport = useCallback(() => {
     const data = exportData();
     setExportedData(JSON.stringify(data, null, 2));
     setPreviewMode("json");
-  };
+  }, [exportData]);
 
-  const handleImport = () => {
+  const handleImport = useCallback(() => {
     try {
       const data = JSON.parse(importText);
       importData(data);
@@ -92,10 +97,10 @@ export const DataPreview: React.FC = () => {
     } catch (error) {
       alert("Invalid JSON format. Please check your data.");
     }
-  };
+  }, [importText, importData, onClose]);
 
-  const downloadConfig = () => {
-    const config = generateStepperConfig();
+  const downloadConfig = useCallback(() => {
+    const config = exportData();
     const dataStr = JSON.stringify(config, null, 2);
     const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
 
@@ -104,35 +109,13 @@ export const DataPreview: React.FC = () => {
     linkElement.setAttribute("href", dataUri);
     linkElement.setAttribute("download", exportFileDefaultName);
     linkElement.click();
-  };
+  }, [exportData]);
 
-  const copyToClipboard = () => {
-    const config = generateStepperConfig();
+  const copyToClipboard = useCallback(() => {
+    const config = exportData();
     navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-    // You could add a toast notification here
-  };
-
-  const stepperConfig = generateStepperConfig();
-
-  // Calculate all products across all steps
-  const allProductsByCategory: Record<string, any[]> = {};
-  stepperConfig.stepperForm.steps.forEach((step) => {
-    if (step.products) {
-      Object.entries(step.products).forEach(([categoryName, products]) => {
-        if (!allProductsByCategory[categoryName]) {
-          allProductsByCategory[categoryName] = [];
-        }
-        allProductsByCategory[categoryName].push(...(products as any[]));
-      });
-    }
-  });
-
-  const stats = {
-    totalSteps: stepperConfig.stepperForm.steps.length,
-    totalCategories: Object.keys(allProductsByCategory).length,
-    totalProducts: Object.values(allProductsByCategory).reduce((sum, products) => sum + products.length, 0),
-    hasIssues: stepperConfig.stepperForm.steps.some((step) => !step.categories || step.categories.length === 0),
-  };
+    // Toast notification would be shown here if implemented
+  }, [exportData]);
 
   return (
     <>
@@ -157,18 +140,22 @@ export const DataPreview: React.FC = () => {
       {/* Configuration Stats */}
       <Card className="mb-6">
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-primary-600">{stats.totalSteps}</div>
               <div className="text-sm text-foreground-500">Stepper Steps</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-secondary-600">{stats.totalCategories}</div>
-              <div className="text-sm text-foreground-500">Categories</div>
+              <div className="text-sm text-foreground-500">Ranges</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-success-600">{stats.totalProducts}</div>
               <div className="text-sm text-foreground-500">Products</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-warning-600">{stats.productsWithOptions}</div>
+              <div className="text-sm text-foreground-500">With Options</div>
             </div>
             <div className="text-center">
               <div className={`flex justify-center text-2xl font-bold ${stats.hasIssues ? "text-warning-600" : "text-success-600"}`}>
@@ -215,19 +202,37 @@ export const DataPreview: React.FC = () => {
                         </div>
                         <div className="flex-1">
                           <h5 className="font-semibold">{step.title}</h5>
-                          {step.categories && step.categories.length > 0 ? (
-                            <div className="flex gap-1 mt-1">
+                          {step.step === 1 && step.categories && step.categories.length > 0 && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
                               {step.categories.map((category, index) => (
                                 <Chip key={index} size="sm" variant="flat" color="secondary">
                                   {category}
                                 </Chip>
                               ))}
                             </div>
-                          ) : (
-                            <p className="text-sm text-warning-600 mt-1">
-                              <Icon icon="lucide:alert-triangle" width={14} className="inline mr-1" />
-                              No categories linked
-                            </p>
+                          )}
+                          {step.step === 2 && step.ranges && Object.keys(step.ranges).length > 0 && (
+                            <p className="text-sm text-foreground-500 mt-1">{Object.keys(step.ranges).length} group(s) with ranges</p>
+                          )}
+                          {step.step === 3 && step.products && Object.keys(step.products).length > 0 && (
+                            <p className="text-sm text-foreground-500 mt-1">{Object.keys(step.products).length} range(s) with products</p>
+                          )}
+                          {step.step === 4 && step.productDetails && Object.keys(step.productDetails).length > 0 && (
+                            <p className="text-sm text-foreground-500 mt-1">{Object.keys(step.productDetails).length} product detail(s)</p>
+                          )}
+                          {step.step === 5 && (
+                            <div className="flex gap-2 mt-1">
+                              {step.options && Object.keys(step.options).length > 0 && (
+                                <Chip size="sm" variant="flat" color="primary">
+                                  {Object.keys(step.options).length} global option group(s)
+                                </Chip>
+                              )}
+                              {step.productOptions && Object.keys(step.productOptions).length > 0 && (
+                                <Chip size="sm" variant="flat" color="warning">
+                                  {Object.keys(step.productOptions).length} product(s) with options
+                                </Chip>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -237,12 +242,12 @@ export const DataPreview: React.FC = () => {
               </CardBody>
             </Card>
 
-            {/* Products by Category */}
+            {/* Products by Range */}
             <Card>
               <CardHeader>
                 <h4 className="font-semibold flex items-center gap-2">
                   <Icon icon="lucide:package" width={16} />
-                  Products by Category
+                  Products by Range
                 </h4>
               </CardHeader>
               <CardBody>
@@ -254,25 +259,30 @@ export const DataPreview: React.FC = () => {
                   </div>
                 ) : (
                   <Accordion variant="bordered">
-                    {Object.entries(allProductsByCategory).map(([categoryName, categoryProducts]) => (
+                    {Object.entries(allProductsByCategory).map(([rangeName, rangeProducts]) => (
                       <AccordionItem
-                        key={categoryName}
+                        key={rangeName}
                         title={
                           <div className="flex items-center gap-3">
                             <Avatar
                               icon={<Icon icon="lucide:grid-3x3" width={16} />}
                               className="w-6 h-6 bg-secondary-100 text-secondary-600"
                             />
-                            <span className="font-medium">{categoryName}</span>
+                            <span className="font-medium">{rangeName}</span>
                             <Chip size="sm" variant="flat" color="secondary">
-                              {categoryProducts.length} product{categoryProducts.length !== 1 ? "s" : ""}
+                              {rangeProducts.length} product{rangeProducts.length !== 1 ? "s" : ""}
                             </Chip>
+                            {rangeProducts.some((p: any) => p.hasOptions) && (
+                              <Chip size="sm" variant="flat" color="warning">
+                                {rangeProducts.filter((p: any) => p.hasOptions).length} with options
+                              </Chip>
+                            )}
                           </div>
                         }
                       >
                         <div className="space-y-3 pl-4">
-                          {categoryProducts.map((product: any) => (
-                            <div key={product.id} className="border-l-2 border-success-200 pl-4">
+                          {rangeProducts.map((product: any) => (
+                            <div key={product.code} className="border-l-2 border-success-200 pl-4">
                               <div className="flex items-start gap-3">
                                 <Avatar
                                   icon={<Icon icon="lucide:package" width={16} />}
@@ -284,23 +294,69 @@ export const DataPreview: React.FC = () => {
                                     <Chip size="sm" variant="flat" color="success">
                                       {product.code}
                                     </Chip>
+                                    {product.hasOptions && (
+                                      <Chip
+                                        size="sm"
+                                        variant="flat"
+                                        color="warning"
+                                        startContent={<Icon icon="lucide:settings" width={12} />}
+                                      >
+                                        {Object.keys(product.options).length} option groups
+                                      </Chip>
+                                    )}
                                   </div>
                                   <p className="text-sm text-foreground-600 mb-2">{product.overview}</p>
 
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
                                     <div>
                                       <span className="font-medium text-foreground-700">Specifications:</span>
-                                      <span className="text-foreground-500 ml-1">{product.specifications.length}</span>
+                                      <span className="text-foreground-500 ml-1">{product.specifications?.length || 0}</span>
                                     </div>
                                     <div>
                                       <span className="font-medium text-foreground-700">Images:</span>
-                                      <span className="text-foreground-500 ml-1">{product.imageGallery.length}</span>
+                                      <span className="text-foreground-500 ml-1">{product.imageGallery?.length || 0}</span>
                                     </div>
                                     <div>
                                       <span className="font-medium text-foreground-700">Files:</span>
-                                      <span className="text-foreground-500 ml-1">{Object.keys(product.files).length}</span>
+                                      <span className="text-foreground-500 ml-1">{Object.keys(product.files || {}).length}</span>
+                                    </div>
+                                    <div>
+                                      <span className="font-medium text-foreground-700">Options:</span>
+                                      <span className="text-foreground-500 ml-1">
+                                        {product.hasOptions ? Object.keys(product.options).length : "None"}
+                                      </span>
                                     </div>
                                   </div>
+
+                                  {/* Display option groups if available */}
+                                  {product.hasOptions && (
+                                    <div className="mt-3 p-3 bg-warning-50 rounded-medium border border-warning-200">
+                                      <h6 className="text-xs font-semibold text-warning-800 mb-2 flex items-center gap-1">
+                                        <Icon icon="lucide:settings" width={12} />
+                                        Configuration Options
+                                      </h6>
+                                      <div className="space-y-2">
+                                        {Object.entries(product.options).map(([optionGroup, optionValues]: [string, any]) => (
+                                          <div key={optionGroup} className="text-xs">
+                                            <span className="font-medium text-foreground-700">{optionGroup}:</span>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                              {optionValues.map((opt: any, idx: number) => (
+                                                <Chip
+                                                  key={idx}
+                                                  size="sm"
+                                                  variant="flat"
+                                                  color="default"
+                                                  startContent={opt.imageUrl && <Icon icon="lucide:image" width={10} />}
+                                                >
+                                                  {typeof opt === "string" ? opt : opt.value}
+                                                </Chip>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>

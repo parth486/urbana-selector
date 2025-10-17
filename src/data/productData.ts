@@ -4,14 +4,7 @@ export const productData = {
       {
         step: 1,
         title: "Select Product Group",
-        categories: [
-          "Shelter",
-          "Toilet",
-          "Bridge",
-          "Access",
-          "Seating",
-          "Lighting",
-        ],
+        categories: ["Shelter", "Toilet", "Bridge", "Access", "Seating", "Lighting"],
       },
       {
         step: 2,
@@ -19,22 +12,10 @@ export const productData = {
         ranges: {
           Shelter: ["Peninsula", "Whyalla", "Coastal", "Urban", "Heritage"],
           Toilet: ["EcoSan", "Standard", "Accessible", "Premium", "Compact"],
-          Bridge: [
-            "Small Span",
-            "Large Span",
-            "Pedestrian",
-            "Decorative",
-            "Heavy Duty",
-          ],
+          Bridge: ["Small Span", "Large Span", "Pedestrian", "Decorative", "Heavy Duty"],
           Access: ["Ramp", "Staircase", "Pathway", "Boardwalk", "Platform"],
           Seating: ["Bench", "Table Setting", "Lounge", "Stadium", "Custom"],
-          Lighting: [
-            "Solar",
-            "Mains Powered",
-            "Decorative",
-            "Security",
-            "Pathway",
-          ],
+          Lighting: ["Solar", "Mains Powered", "Decorative", "Security", "Pathway"],
         },
       },
       {
@@ -77,16 +58,10 @@ export const productData = {
         productDetails: {
           K301: {
             name: "Peninsula K301",
-            overview:
-              "Compact shelter suitable for parks and gardens with durable construction and weather resistance.",
+            overview: "Compact shelter suitable for parks and gardens with durable construction and weather resistance.",
             description:
               "The Peninsula K301 is our most popular compact shelter, designed for parks and urban settings. It features a modern design with excellent weather protection and durability. The structure is engineered to withstand harsh conditions while providing a comfortable space for visitors.",
-            specifications: [
-              "Dimensions: 3.0m x 3.0m",
-              "Height: 2.5m",
-              "Capacity: 8-10 people",
-              "Weight: 450kg",
-            ],
+            specifications: ["Dimensions: 3.0m x 3.0m", "Height: 2.5m", "Capacity: 8-10 people", "Weight: 450kg"],
             imageGallery: ["shelter/1", "shelter/2", "shelter/3"],
             files: {
               "PDF Specification": "Peninsula_K301_Spec.pdf",
@@ -97,16 +72,10 @@ export const productData = {
           },
           K302: {
             name: "Peninsula K302",
-            overview:
-              "Medium-sized shelter ideal for picnic areas and playgrounds with extended roof coverage.",
+            overview: "Medium-sized shelter ideal for picnic areas and playgrounds with extended roof coverage.",
             description:
               "The Peninsula K302 is a versatile medium-sized shelter perfect for picnic areas and playgrounds. It offers extended roof coverage and can be configured with various seating options. The design emphasizes both aesthetics and functionality, making it a popular choice for public spaces.",
-            specifications: [
-              "Dimensions: 4.0m x 4.0m",
-              "Height: 2.8m",
-              "Capacity: 12-15 people",
-              "Weight: 580kg",
-            ],
+            specifications: ["Dimensions: 4.0m x 4.0m", "Height: 2.8m", "Capacity: 12-15 people", "Weight: 580kg"],
             imageGallery: ["shelter/4", "shelter/5", "shelter/6"],
             files: {
               "PDF Specification": "Peninsula_K302_Spec.pdf",
@@ -117,16 +86,10 @@ export const productData = {
           },
           E201: {
             name: "EcoSan E201",
-            overview:
-              "Environmentally friendly toilet solution with composting technology and minimal water usage.",
+            overview: "Environmentally friendly toilet solution with composting technology and minimal water usage.",
             description:
               "The EcoSan E201 is our flagship environmentally friendly toilet solution that uses advanced composting technology. It requires minimal water and produces valuable compost as a byproduct. Designed for parks and remote locations where traditional plumbing may be challenging.",
-            specifications: [
-              "Dimensions: 2.2m x 1.8m",
-              "Height: 2.4m",
-              "Capacity: Single cubicle",
-              "Weight: 380kg",
-            ],
+            specifications: ["Dimensions: 2.2m x 1.8m", "Height: 2.4m", "Capacity: Single cubicle", "Weight: 380kg"],
             imageGallery: ["toilet/1", "toilet/2", "toilet/3"],
             files: {
               "PDF Specification": "EcoSan_E201_Spec.pdf",
@@ -137,16 +100,10 @@ export const productData = {
           },
           SS101: {
             name: "Small Span SS101",
-            overview:
-              "Compact pedestrian bridge for garden paths and small water crossings with elegant design.",
+            overview: "Compact pedestrian bridge for garden paths and small water crossings with elegant design.",
             description:
               "The Small Span SS101 is a beautifully designed pedestrian bridge perfect for garden paths and small water crossings. Its elegant design adds aesthetic value while providing safe passage. The structure is engineered for durability and ease of installation.",
-            specifications: [
-              "Span: 3.0m",
-              "Width: 1.2m",
-              "Load Capacity: 400kg",
-              "Weight: 280kg",
-            ],
+            specifications: ["Span: 3.0m", "Width: 1.2m", "Load Capacity: 400kg", "Weight: 280kg"],
             imageGallery: ["bridge/1", "bridge/2", "bridge/3"],
             files: {
               "PDF Specification": "SmallSpan_SS101_Spec.pdf",
@@ -157,16 +114,10 @@ export const productData = {
           },
           R101: {
             name: "Access Ramp R101",
-            overview:
-              "ADA compliant access ramp with gentle slope and non-slip surface for universal accessibility.",
+            overview: "ADA compliant access ramp with gentle slope and non-slip surface for universal accessibility.",
             description:
               "The Access Ramp R101 is designed to provide universal accessibility with its ADA compliant design. It features a gentle slope, non-slip surface, and sturdy handrails. Perfect for public buildings, parks, and commercial spaces requiring accessible entry points.",
-            specifications: [
-              "Length: 6.0m",
-              "Width: 1.2m",
-              "Slope: 1:12",
-              "Weight: 320kg",
-            ],
+            specifications: ["Length: 6.0m", "Width: 1.2m", "Slope: 1:12", "Weight: 320kg"],
             imageGallery: ["access/1", "access/2", "access/3"],
             files: {
               "PDF Specification": "Ramp_R101_Spec.pdf",
@@ -182,51 +133,44 @@ export const productData = {
         title: "Configure Options",
         options: {
           "Post Material": [
-            "Pine",
-            "Hardwood",
-            "Steel",
-            "Aluminum",
-            "Composite",
-            "Recycled Plastic",
+            { value: "Pine", imageUrl: "" },
+            { value: "Hardwood", imageUrl: "" },
+            { value: "Steel", imageUrl: "" },
+            { value: "Aluminum", imageUrl: "" },
+            { value: "Composite", imageUrl: "" },
+            { value: "Recycled Plastic", imageUrl: "" },
           ],
           "Roof Option": [
-            "Colorbond",
-            "Ultra Grade",
-            "Timber",
-            "Polycarbonate",
-            "Green Roof",
-            "Solar Panels",
+            { value: "Colorbond", imageUrl: "" },
+            { value: "Ultra Grade", imageUrl: "" },
+            { value: "Timber", imageUrl: "" },
+            { value: "Polycarbonate", imageUrl: "" },
+            { value: "Green Roof", imageUrl: "" },
+            { value: "Solar Panels", imageUrl: "" },
           ],
           Screen: [
-            "Rebated Front",
-            "None",
-            "Full Enclosure",
-            "Half Height",
-            "Decorative Pattern",
-            "Custom Design",
+            { value: "Rebated Front", imageUrl: "" },
+            { value: "None", imageUrl: "" },
+            { value: "Full Enclosure", imageUrl: "" },
+            { value: "Half Height", imageUrl: "" },
+            { value: "Decorative Pattern", imageUrl: "" },
+            { value: "Custom Design", imageUrl: "" },
           ],
           "Floor Finish": [
-            "Concrete",
-            "Timber Decking",
-            "Rubber",
-            "Pavers",
-            "Gravel",
-            "Natural Ground",
+            { value: "Concrete", imageUrl: "" },
+            { value: "Timber Decking", imageUrl: "" },
+            { value: "Rubber", imageUrl: "" },
+            { value: "Pavers", imageUrl: "" },
+            { value: "Gravel", imageUrl: "" },
+            { value: "Natural Ground", imageUrl: "" },
           ],
           "Color Scheme": [
-            "Natural",
-            "Modern",
-            "Heritage",
-            "Coastal",
-            "Urban",
-            "Custom",
-          ],
-          "Accessibility Features": [
-            "Standard",
-            "Enhanced",
-            "Full Compliance",
-            "Sensory Elements",
-            "Braille Signage",
+            { value: "Natural", imageUrl: "" },
+            { value: "Modern", imageUrl: "" },
+            { value: "Heritage", imageUrl: "" },
+            { value: "Coastal", imageUrl: "" },
+            { value: "Urban", imageUrl: "" },
+            { value: "Custom", imageUrl: "" },
           ],
         },
         dynamicUpdates: {

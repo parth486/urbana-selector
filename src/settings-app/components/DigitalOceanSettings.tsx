@@ -306,9 +306,20 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
 │           ├── images/
 │           │   ├── hero.jpg
 │           │   └── gallery-1.jpg
-│           └── downloads/
-│               ├── spec.pdf
-│               └── install.pdf
+│           ├── downloads/
+│           │   ├── spec.pdf
+│           │   └── install.pdf
+│           └── img_conf/
+│               ├── Post Material/
+│               │   ├── Pine.jpg
+│               │   └── Concrete.jpg
+│               ├── Seat Material/
+│               │   ├── Recycled Plastic.jpg
+│               │   └── Thermoplastic.jpg
+│               └── Finish/
+│                   ├── Galvanized.jpg
+│                   └── Powder Coated.jpg
+│               
 ├── seating/
 │   └── bench/
 │       └── b100/

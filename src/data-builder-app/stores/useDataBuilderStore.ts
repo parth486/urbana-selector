@@ -27,6 +27,7 @@ export interface Product {
   specifications: string[];
   imageGallery: string[];
   files: Record<string, string>;
+  options?: Record<string, Array<{ value: string; imageUrl?: string }>>; // Optional product-specific options
 }
 
 export interface ProductContent {
@@ -664,10 +665,45 @@ export const useDataBuilderStore = create<DataBuilderState>()(
                   return detailsObj;
                 })(),
               },
-              productData.stepperForm.steps[4] || {
+              {
                 step: 5,
                 title: "Configure Options",
-                options: {},
+                // Build global options from all products that have options
+                options: (() => {
+                  const globalOptions: Record<string, Array<{ value: string; imageUrl?: string }>> = {};
+
+                  products.forEach((product) => {
+                    if (product.options) {
+                      Object.entries(product.options).forEach(([optionGroup, optionValues]) => {
+                        if (!globalOptions[optionGroup]) {
+                          globalOptions[optionGroup] = [];
+                        }
+
+                        // Merge option values, avoiding duplicates
+                        optionValues.forEach((optionValue) => {
+                          const exists = globalOptions[optionGroup].some((existing) => existing.value === optionValue.value);
+                          if (!exists) {
+                            globalOptions[optionGroup].push(optionValue);
+                          }
+                        });
+                      });
+                    }
+                  });
+
+                  return globalOptions;
+                })(),
+                // Also store product-specific options for reference
+                productOptions: (() => {
+                  const productOptionsMap: Record<string, Record<string, Array<{ value: string; imageUrl?: string }>>> = {};
+
+                  products.forEach((product) => {
+                    if (product.options && Object.keys(product.options).length > 0) {
+                      productOptionsMap[product.code] = product.options;
+                    }
+                  });
+
+                  return productOptionsMap;
+                })(),
               },
               productData.stepperForm.steps[5] || {
                 step: 6,
@@ -866,10 +902,22 @@ export const useDataBuilderStore = create<DataBuilderState>()(
         }),
 
       // Options and fields
-      updateOptions: (options: Record<string, string[]>) =>
+      updateOptions: (options: Record<string, Array<string | { value: string; imageUrl?: string }>>) =>
         set((draft) => {
           if (draft.productData.stepperForm.steps[4]) {
-            draft.productData.stepperForm.steps[4].options = options;
+            // Convert simple string arrays to object arrays with value and imageUrl
+            const formattedOptions: Record<string, Array<{ value: string; imageUrl?: string }>> = {};
+
+            Object.entries(options).forEach(([key, values]) => {
+              formattedOptions[key] = values.map((val) => {
+                if (typeof val === "string") {
+                  return { value: val };
+                }
+                return val;
+              });
+            });
+
+            draft.productData.stepperForm.steps[4].options = formattedOptions;
             draft.isDirty = true;
           }
         }),

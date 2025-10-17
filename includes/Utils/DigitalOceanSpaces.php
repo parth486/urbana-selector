@@ -591,6 +591,7 @@ class DigitalOceanSpaces {
 							$structured[ $category ][ $range ][ $product_code ] = array(
 								'images'    => array(),
 								'downloads' => array(),
+								'img_conf'  => array(),
 							);
 						}
 					}
@@ -604,12 +605,12 @@ class DigitalOceanSpaces {
 			$parts = explode( '/', $key );
 
 			// Expected structure: category/range/product_code/type/filename
+			// OR: category/range/product_code/img_conf/option_group/filename
 			if ( count( $parts ) >= 5 ) {
 				$category     = $parts[0];
 				$range        = $parts[1];
 				$product_code = $parts[2];
-				$type         = $parts[3]; // 'images' or 'downloads'
-				$filename     = $parts[4];
+				$type         = $parts[3]; // 'images', 'downloads', or 'img_conf'
 
 				// Ensure structure exists
 				if ( ! isset( $structured[ $category ] ) ) {
@@ -624,11 +625,43 @@ class DigitalOceanSpaces {
 					$structured[ $category ][ $range ][ $product_code ] = array(
 						'images'    => array(),
 						'downloads' => array(),
+						'img_conf'  => array(),
 					);
 				}
 
-				if ( in_array( $type, array( 'images', 'downloads' ), true ) ) {
-					$structured[ $category ][ $range ][ $product_code ][ $type ][] = array(
+				if ( $type === 'img_conf' && count( $parts ) >= 6 ) {
+					// Handle option images: category/range/product_code/img_conf/option_group/filename
+					$option_group = $parts[4];
+					$filename     = $parts[5];
+
+					if ( ! isset( $structured[ $category ][ $range ][ $product_code ]['img_conf'] ) ) {
+						$structured[ $category ][ $range ][ $product_code ]['img_conf'] = array();
+					}
+
+					if ( ! isset( $structured[ $category ][ $range ][ $product_code ]['img_conf'][ $option_group ] ) ) {
+						$structured[ $category ][ $range ][ $product_code ]['img_conf'][ $option_group ] = array();
+					}
+
+					// Extract option value from filename (without extension)
+					$option_value = pathinfo( $filename, PATHINFO_FILENAME );
+
+					$structured[ $category ][ $range ][ $product_code ]['img_conf'][ $option_group ][ $option_value ] = array(
+						'filename' => $filename,
+						'url'      => $object['url'],
+						'size'     => $object['size'],
+						'modified' => $object['last_modified'],
+					);
+				} elseif ( $type === 'images' && count( $parts ) === 5 ) {
+					$filename = $parts[4];
+					$structured[ $category ][ $range ][ $product_code ]['images'][] = array(
+						'filename' => $filename,
+						'url'      => $object['url'],
+						'size'     => $object['size'],
+						'modified' => $object['last_modified'],
+					);
+				} elseif ( $type === 'downloads' && count( $parts ) === 5 ) {
+					$filename = $parts[4];
+					$structured[ $category ][ $range ][ $product_code ]['downloads'][] = array(
 						'filename' => $filename,
 						'url'      => $object['url'],
 						'size'     => $object['size'],
@@ -640,6 +673,7 @@ class DigitalOceanSpaces {
 
 		return $structured;
 	}
+
 
 	public function get_configuration() {
 		return array(

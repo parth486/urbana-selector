@@ -19,6 +19,7 @@ interface Step5Props {
 
 export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onOptionsChange, selectedProductCode }) => {
   const previousProductCode = useRef<string | undefined>(selectedProductCode);
+  const lastChangedOption = useRef<string | null>(null);
 
   // Get product-specific options or fall back to global options
   const productOptions = useMemo(() => {
@@ -48,9 +49,10 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
     const filtered: Record<string, string> = {};
     const validOptionGroups = Object.keys(productOptions);
 
-    Object.entries(options).forEach(([key, value]) => {
-      if (validOptionGroups.includes(key)) {
-        filtered[key] = value;
+    // Iterate through productOptions keys to preserve order
+    validOptionGroups.forEach((key) => {
+      if (options[key]) {
+        filtered[key] = options[key];
       }
     });
 
@@ -87,6 +89,7 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
 
   const handleOptionChange = useCallback(
     (option: string, value: string) => {
+      lastChangedOption.current = option;
       onOptionsChange({
         ...filteredOptions,
         [option]: value,
@@ -97,17 +100,26 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
 
   // Get the image URL for the currently selected option
   const selectedOptionImage = useMemo(() => {
-    const selectedOptionKeys = Object.keys(options);
-    if (selectedOptionKeys.length === 0) {
+    const orderedOptionKeys = Object.keys(productOptions);
+
+    if (orderedOptionKeys.length === 0) {
       return null;
     }
 
-    // Find the most recently selected option that has an image
-    for (let i = selectedOptionKeys.length - 1; i >= 0; i--) {
-      const optionKey = selectedOptionKeys[i];
+    // First, try to get image from the last changed option
+    if (lastChangedOption.current && options[lastChangedOption.current]) {
+      const optionConfig = productOptions[lastChangedOption.current]?.find((opt) => opt.value === options[lastChangedOption.current!]);
+      if (optionConfig?.imageUrl) {
+        return optionConfig.imageUrl;
+      }
+    }
+
+    // Fallback: find the last selected option (in canonical order) that has an image
+    for (let i = orderedOptionKeys.length - 1; i >= 0; i--) {
+      const optionKey = orderedOptionKeys[i];
       const selectedValue = options[optionKey];
 
-      if (productOptions[optionKey]) {
+      if (selectedValue && productOptions[optionKey]) {
         const optionConfig = productOptions[optionKey].find((opt) => opt.value === selectedValue);
         if (optionConfig?.imageUrl) {
           return optionConfig.imageUrl;
@@ -196,6 +208,7 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
                         selectedKeys={options[option] ? [options[option]] : []}
                         onChange={(e) => {
                           const value = e.target.value;
+                          lastChangedOption.current = option;
                           handleOptionChange(option, value);
                         }}
                         className="max-w-full"

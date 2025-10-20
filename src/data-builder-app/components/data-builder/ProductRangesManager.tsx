@@ -89,6 +89,7 @@ export const ProductRangesManager: React.FC = () => {
     image: "",
     description: "",
     tags: [],
+    active: true,
   });
   const [selectedGroups, setSelectedGroups] = React.useState<Set<string>>(new Set());
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -100,6 +101,7 @@ export const ProductRangesManager: React.FC = () => {
       image: "",
       description: "",
       tags: [],
+      active: true,
     });
     setSelectedGroups(new Set());
     setErrors({});
@@ -113,6 +115,7 @@ export const ProductRangesManager: React.FC = () => {
       image: range.image,
       description: range.description,
       tags: [...range.tags],
+      active: range.active,
     });
 
     // Find which groups this range belongs to
@@ -408,8 +411,12 @@ interface RangeCardProps {
 }
 
 const RangeCard: React.FC<RangeCardProps> = ({ range, onEdit, onDelete }) => {
-  const { getProductsForRange } = useDataBuilderStore();
+  const { getProductsForRange, updateProductRange } = useDataBuilderStore();
   const productsCount = getProductsForRange(range.id).length;
+
+  const handleToggleActive = () => {
+    updateProductRange(range.id, { active: typeof range.active === "undefined" ? false : !range.active });
+  };
 
   return (
     <Card className="hover:shadow-lg transition-shadow">
@@ -425,6 +432,11 @@ const RangeCard: React.FC<RangeCardProps> = ({ range, onEdit, onDelete }) => {
             )}
             <div>
               <h4 className="text-lg font-semibold">{range.name}</h4>
+              {typeof range.active !== "undefined" && !range.active && (
+                <Chip size="sm" variant="flat" color="warning">
+                  Inactive
+                </Chip>
+              )}
               <Chip size="sm" variant="flat" color="secondary">
                 {productsCount} product{productsCount !== 1 ? "s" : ""}
               </Chip>
@@ -439,6 +451,15 @@ const RangeCard: React.FC<RangeCardProps> = ({ range, onEdit, onDelete }) => {
             <DropdownMenu aria-label="Range Actions">
               <DropdownItem key="edit" startContent={<Icon icon="lucide:edit" width={16} />} onPress={() => onEdit(range)}>
                 Edit
+              </DropdownItem>
+              <DropdownItem
+                key="toggle-active"
+                startContent={
+                  <Icon icon={typeof range.active !== "undefined" && !range.active ? "lucide:eye" : "lucide:eye-off"} width={16} />
+                }
+                onPress={handleToggleActive}
+              >
+                {typeof range.active !== "undefined" && !range.active ? "Activate" : "Deactivate"}
               </DropdownItem>
               <DropdownItem
                 key="delete"

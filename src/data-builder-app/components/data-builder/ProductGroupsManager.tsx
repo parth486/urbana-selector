@@ -76,6 +76,7 @@ export const ProductGroupsManager: React.FC = () => {
     name: "",
     icon: "lucide:box",
     description: "",
+    active: true,
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -85,6 +86,7 @@ export const ProductGroupsManager: React.FC = () => {
       name: "",
       icon: "lucide:box",
       description: "",
+      active: true,
     });
     setErrors({});
     onOpen();
@@ -96,9 +98,14 @@ export const ProductGroupsManager: React.FC = () => {
       name: group.name,
       icon: group.icon,
       description: group.description,
+      active: group.active,
     });
     setErrors({});
     onOpen();
+  };
+
+  const handleToggleActive = (group: ProductGroup) => {
+    updateProductGroup(group.id, { active: typeof group.active === "undefined" ? false : !group.active });
   };
 
   const handleDeleteGroup = (groupId: string) => {
@@ -204,6 +211,11 @@ export const ProductGroupsManager: React.FC = () => {
                       <Avatar icon={<Icon icon={group.icon} width={20} />} className="bg-primary-100 text-primary-800" size="sm" />
                       <div>
                         <h4 className="text-lg font-semibold">{group.name}</h4>
+                        {typeof group.active !== "undefined" && !group.active && (
+                          <Chip size="sm" variant="flat" color="warning">
+                            Inactive
+                          </Chip>
+                        )}
                         <Chip size="sm" variant="flat" color="primary">
                           {rangesCount} range{rangesCount !== 1 ? "s" : ""}
                         </Chip>
@@ -222,6 +234,18 @@ export const ProductGroupsManager: React.FC = () => {
                           onPress={() => handleEditGroup(group)}
                         >
                           Edit
+                        </DropdownItem>
+                        <DropdownItem
+                          key="toggle-active"
+                          startContent={
+                            <Icon
+                              icon={typeof group.active !== "undefined" && !group.active ? "lucide:eye" : "lucide:eye-off"}
+                              width={16}
+                            />
+                          }
+                          onPress={() => handleToggleActive(group)}
+                        >
+                          {typeof group.active !== "undefined" && !group.active ? "Activate" : "Deactivate"}
                         </DropdownItem>
                         <DropdownItem
                           key="delete"

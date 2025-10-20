@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Card, CardBody, CardFooter, Badge } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
@@ -12,12 +12,16 @@ interface Product {
   specifications: string[];
   imageGallery: string[];
   files: Record<string, string>;
+  active?: boolean;
 }
 
 interface Step3Props {
   data: {
     products: Record<string, string[]>;
     productsData?: Product[]; // Changed from products to productsData to match FrontendInit.php
+    relationships?: {
+      rangeToProducts: Record<string, string[]>;
+    };
   };
   productRange: string;
   selection: string | null;
@@ -49,6 +53,31 @@ export const Step3IndividualProduct: React.FC<Step3Props> = ({ data, productRang
     };
   };
 
+  const activeProducts = useMemo(() => {
+    if (data.productsData && data.relationships) {
+      // Find the range ID for the selected product range
+      const rangeId = productRange.toLowerCase().replace(/\s+/g, "-");
+      const productIds = data.relationships.rangeToProducts[rangeId] || [];
+
+      // Filter products by range and active status
+      return data.productsData.filter((product) => productIds.includes(product.id) && product.active !== false);
+    }
+
+    // Fallback to legacy products structure
+    const legacyProducts = data.products?.[productRange] || [];
+    return legacyProducts.map((productCode) => ({
+      id: productCode.toLowerCase(),
+      code: productCode,
+      name: `${productCode} Product`,
+      overview: getDefaultProductDescription(productCode),
+      description: getDefaultProductDescription(productCode),
+      specifications: [],
+      imageGallery: [],
+      files: {},
+      active: true,
+    }));
+  }, [data.productsData, data.relationships, data.products, productRange]);
+
   // Animation variants
   const container = {
     hidden: { opacity: 0 },
@@ -70,41 +99,54 @@ export const Step3IndividualProduct: React.FC<Step3Props> = ({ data, productRang
       <p className="text-default-600 mb-6">Select a specific product from the {productRange} range:</p>
 
       <motion.div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" variants={container} initial="hidden" animate="show">
-        {products.map((product) => {
-          const isSelected = selection === product;
-          const productData = getProductData(product);
-          const productFeatures = getProductFeatures(product);
+        {activeProducts.map((product) => {
+          const isSelected = selection === product.code;
+          const hasImage = product.imageGallery.length > 0;
 
           return (
-            <motion.div key={product} variants={item}>
+            <motion.div key={product.id} variants={item}>
               <Card
                 isPressable
-                onPress={() => onSelect(product)}
-                className={`h-full transition-all duration-200 ${
+                onPress={() => onSelect(product.code)}
+                className={`h-full w-full transition-all duration-200 ${
                   isSelected ? "border-2 border-primary shadow-md" : "border border-default-200 hover:border-primary hover:shadow-sm"
                 }`}
               >
                 <CardBody className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-lg font-medium">{productData.name || product}</h3>
-                    {isSelected && (
-                      <Badge color="primary" variant="flat">
-                        Selected
-                      </Badge>
-                    )}
+                  <div className="flex items-center justify-center mb-3">
+                    <h3 className="text-lg font-medium">{product.name}</h3>
                   </div>
 
-                  <p className="text-default-500 text-sm">{productData.overview || productData.description}</p>
+                  <p className="text-default-500 text-sm text-center">{product.overview || product.description}</p>
+
+                  {product.specifications.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-default-700 text-center">Key Features:</p>
+                      <div className="text-xs text-default-500">
+                        {product.specifications.slice(0, 3).map((spec, index) => (
+                          <div key={index} className="flex items-start justify-center">
+                            <Icon icon="lucide:check" width={14} className="mr-1 mt-0.5 text-success" />
+                            <span>{spec}</span>
+                          </div>
+                        ))}
+                        {product.specifications.length > 3 && (
+                          <div className="text-default-400 mt-1">+{product.specifications.length - 3} more features</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardBody>
 
-                <CardFooter className="border-t border-default-100 gap-2 flex-wrap">
-                  {productFeatures.map((feature) => (
-                    <div key={feature.name} className="flex items-center text-xs text-default-600">
-                      <Icon icon={feature.icon} className="mr-1" width={14} />
-                      <span>{feature.name}</span>
+                {Object.keys(product.files).length > 0 && (
+                  <CardFooter className="border-t border-default-100 px-4 py-2 justify-center">
+                    <div className="flex items-center gap-2 text-xs text-default-600">
+                      <Icon icon="lucide:file-text" width={14} />
+                      <span>
+                        {Object.keys(product.files).length} document{Object.keys(product.files).length !== 1 ? "s" : ""} available
+                      </span>
                     </div>
-                  ))}
-                </CardFooter>
+                  </CardFooter>
+                )}
               </Card>
             </motion.div>
           );

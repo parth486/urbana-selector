@@ -8,6 +8,7 @@ export interface ProductGroup {
   name: string;
   icon: string;
   description: string;
+  active: boolean;
 }
 
 export interface ProductRange {
@@ -16,6 +17,7 @@ export interface ProductRange {
   image: string;
   description: string;
   tags: string[];
+  active: boolean;
 }
 
 export interface Product {
@@ -28,6 +30,7 @@ export interface Product {
   imageGallery: string[];
   files: Record<string, string>;
   options?: Record<string, Array<{ value: string; imageUrl?: string }>>; // Optional product-specific options
+  active: boolean;
 }
 
 export interface ProductContent {
@@ -726,6 +729,7 @@ export const useDataBuilderStore = create<DataBuilderState>()(
             id,
             icon: group.icon || getDefaultIconForGroup(group.name),
             description: group.description || getDescriptionForGroup(group.name),
+            active: group.active !== undefined ? group.active : true,
           };
 
           // Check if group already exists
@@ -776,6 +780,7 @@ export const useDataBuilderStore = create<DataBuilderState>()(
             id,
             description: range.description || getDescriptionForRange(range.name),
             tags: range.tags || getTagsForRange(range.name),
+            active: range.active !== undefined ? range.active : true,
           };
 
           // Check if range already exists
@@ -823,6 +828,7 @@ export const useDataBuilderStore = create<DataBuilderState>()(
             ...product,
             id,
             code: product.code || generateId(product.name),
+            active: product.active !== undefined ? product.active : true,
           };
 
           // Check if product already exists

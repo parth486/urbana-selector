@@ -288,7 +288,11 @@ The persisted data includes the current step and all user selections (product gr
 
 ### Product Data Structure
 
-The plugin uses a comprehensive data structure:
+The plugin uses a comprehensive data structure stored in the `wp_urbana_product_data` database table:
+
+#### 1. Stepper Form Data (`stepper_form_data`)
+
+This structure defines the actual stepper form configuration used on the frontend:
 
 ```typescript
 {
@@ -330,6 +334,70 @@ The plugin uses a comprehensive data structure:
   }
 }
 ```
+
+#### 2. Data Builder Storage (`stepper_data_builder_{id}`)
+
+This structure stores all the detailed information for the Data Builder app, including full product details, icons, descriptions, and relationships. This is the "source of truth" for all product management:
+
+```typescript
+{
+  productGroups: [
+    {
+      id: string,           // Generated unique ID (kebab-case)
+      name: string,         // Display name (e.g., "Shelter", "Toilet", "Bridge")
+      icon: string,         // Iconify icon name (e.g., "lucide:home", "lucide:bath")
+      description: string   // Full description of the product group
+    }
+  ],
+  productRanges: [
+    {
+      id: string,           // Generated unique ID (kebab-case)
+      name: string,         // Display name (e.g., "Peninsula", "EcoSan")
+      image: string,        // URL to range image
+      description: string,  // Full description of the range
+      tags: string[]        // Tags for filtering/categorization
+    }
+  ],
+  products: [
+    {
+      id: string,           // Generated unique ID (kebab-case)
+      code: string,         // Product code (e.g., "K302", "WHYL63")
+      name: string,         // Product name
+      overview: string,     // Short overview text
+      description: string,  // Full product description
+      specifications: string[],  // Array of specification points
+      imageGallery: string[],    // Array of image URLs
+      files: Record<string, string>,  // File name → URL mapping
+      options?: Record<string, Array<{   // Product-specific options
+        value: string,
+        imageUrl?: string
+      }>>
+    }
+  ],
+  relationships: {
+    groupToRanges: Record<string, string[]>,    // Group ID → Range IDs
+    rangeToProducts: Record<string, string[]>   // Range ID → Product IDs
+  },
+  lastSaved: string  // ISO timestamp of last save
+}
+```
+
+**Key Points:**
+
+- **Two-tier storage**: `stepper_form_data` for the frontend form structure, `stepper_data_builder_{id}` for complete product management
+- **Icon system**: Product groups can have custom Iconify icons for better visual identification
+- **Rich metadata**: Full descriptions, specifications, and image galleries for each product
+- **Relationship mapping**: Explicit relationships between groups, ranges, and products
+- **Product-specific options**: Each product can have unique configuration options with image previews
+- **Flexible file management**: Download files are stored with customizable display names
+- **Tag system**: Product ranges support tagging for advanced filtering and organization
+
+**Database Storage:**
+
+Both structures are stored in the `wp_urbana_product_data` table:
+- `data_key` = `'stepper_form_data'` → Contains the stepper form configuration
+- `data_key` = `'stepper_data_builder_1'` → Contains the complete product data for stepper ID 1
+- Each stepper can have its own separate data builder storage
 
 ### API Endpoints
 

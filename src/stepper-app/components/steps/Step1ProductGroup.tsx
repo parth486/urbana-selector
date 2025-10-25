@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Card, CardBody } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
@@ -8,6 +8,7 @@ interface ProductGroup {
   name: string;
   icon: string;
   description: string;
+  active?: boolean;
 }
 
 interface Step1Props {
@@ -24,7 +25,10 @@ export const Step1ProductGroup: React.FC<Step1Props> = ({ data, selection, onSel
   const getProductGroupData = (categoryName: string): ProductGroup => {
     console.log("data.productGroups", data.productGroups);
     if (data.productGroups) {
-      const foundGroup = data.productGroups.find((group) => group.name === categoryName);
+      // Filter only active product groups
+      const activeProductGroups = data.productGroups?.filter((group) => group.active !== false) || [];
+
+      const foundGroup = activeProductGroups.find((group) => group.name === categoryName);
       console.log("foundGroup", foundGroup);
       if (foundGroup) {
         return foundGroup;
@@ -39,6 +43,22 @@ export const Step1ProductGroup: React.FC<Step1Props> = ({ data, selection, onSel
       description: getDefaultCategoryDescription(categoryName),
     };
   };
+
+  const activeProductGroups = useMemo(() => {
+    if (data.productGroups && Array.isArray(data.productGroups)) {
+      return data.productGroups.filter((group) => group.active !== false);
+    }
+    // Fallback to legacy categories if productGroups not available
+    return (
+      data.categories?.map((category) => ({
+        id: category.toLowerCase().replace(/\s+/g, "-"),
+        name: category,
+        icon: getDefaultCategoryIcon(category),
+        description: getDefaultCategoryDescription(category),
+        active: true,
+      })) || []
+    );
+  }, [data.productGroups, data.categories]);
 
   // Animation variants
   const container = {
@@ -61,16 +81,14 @@ export const Step1ProductGroup: React.FC<Step1Props> = ({ data, selection, onSel
       <p className="text-default-600 mb-6">Please select a product category to begin your configuration.</p>
 
       <motion.div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" variants={container} initial="hidden" animate="show">
-        {data.categories.map((category) => {
-          const groupData = getProductGroupData(category);
-
+        {activeProductGroups.map((group) => {
           return (
-            <motion.div key={category} variants={item}>
+            <motion.div key={group.id} variants={item}>
               <Card
                 isPressable
-                onPress={() => onSelect(category)}
+                onPress={() => onSelect(group.name)}
                 className={`transition-all duration-200 ${
-                  selection === category
+                  selection === group.name
                     ? "border-2 border-primary shadow-md"
                     : "border border-default-200 hover:border-primary hover:shadow-sm"
                 }`}
@@ -78,13 +96,13 @@ export const Step1ProductGroup: React.FC<Step1Props> = ({ data, selection, onSel
                 <CardBody className="flex flex-col items-center text-center p-6">
                   <div
                     className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
-                      selection === category ? "bg-primary text-white" : "bg-default-100 text-default-500"
+                      selection === group.name ? "bg-primary text-white" : "bg-default-100 text-default-500"
                     }`}
                   >
-                    <Icon icon={groupData.icon} width={24} />
+                    <Icon icon={group.icon} width={24} />
                   </div>
-                  <h3 className="text-lg font-medium">{category}</h3>
-                  <p className="text-default-500 text-sm mt-1">{groupData.description}</p>
+                  <h3 className="text-lg font-medium">{group.name}</h3>
+                  <p className="text-default-500 text-sm mt-1">{group.description}</p>
                 </CardBody>
               </Card>
             </motion.div>

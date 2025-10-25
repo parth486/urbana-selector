@@ -1,5 +1,5 @@
-import React from "react";
-import { Card, CardBody, Image } from "@heroui/react";
+import React, { useMemo } from "react";
+import { Card, CardBody, CardHeader, Image } from "@heroui/react";
 import { motion } from "framer-motion";
 
 interface ProductRange {
@@ -8,12 +8,16 @@ interface ProductRange {
   image: string;
   description: string;
   tags: string[];
+  active?: boolean;
 }
 
 interface Step2Props {
   data: {
-    ranges: Record<string, string[]>;
+    ranges: Record<string, string[]>; // Legacy fallback
     productRanges?: ProductRange[]; // Add product ranges data
+    relationships?: {
+      groupToRanges: Record<string, string[]>;
+    };
   };
   productGroup: string;
   selection: string | null;
@@ -26,7 +30,8 @@ export const Step2ProductRange: React.FC<Step2Props> = ({ data, productGroup, se
   // Get product range data from database or fallback to hardcoded
   const getProductRangeData = (rangeName: string): ProductRange => {
     if (data.productRanges) {
-      const foundRange = data.productRanges.find((range) => range.name === rangeName);
+      const activeProductRanges = data.productRanges?.filter((range) => range.active !== false) || [];
+      const foundRange = activeProductRanges.find((range) => range.name === rangeName);
       if (foundRange) {
         return foundRange;
       }
@@ -37,10 +42,32 @@ export const Step2ProductRange: React.FC<Step2Props> = ({ data, productGroup, se
       id: rangeName.toLowerCase().replace(/\s+/g, "-"),
       name: rangeName,
       image: "",
-      description: getDefaultRangeDescription(rangeName, productGroup),
+      description: getDefaultRangeDescription(rangeName),
       tags: getDefaultFeatureTags(rangeName, productGroup),
     };
   };
+
+  const activeRanges = useMemo(() => {
+    if (data.productRanges && data.relationships) {
+      // Convert productGroup name to ID format
+      const groupId = productGroup.toLowerCase().replace(/\s+/g, "-");
+      const rangeIds = data.relationships.groupToRanges?.[groupId] || [];
+
+      // Filter ranges by group and active status
+      return data.productRanges.filter((range) => rangeIds.includes(range.id) && range.active !== false);
+    }
+
+    // Fallback to legacy ranges structure
+    const legacyRanges = data.ranges?.[productGroup] || [];
+    return legacyRanges.map((rangeName) => ({
+      id: rangeName.toLowerCase().replace(/\s+/g, "-"),
+      name: rangeName,
+      image: "",
+      description: getDefaultRangeDescription(rangeName),
+      tags: getDefaultFeatureTags(rangeName, productGroup),
+      active: true,
+    }));
+  }, [data.productRanges, data.relationships, data.ranges, productGroup]);
 
   // Animation variants
   const container = {
@@ -63,32 +90,29 @@ export const Step2ProductRange: React.FC<Step2Props> = ({ data, productGroup, se
       <p className="text-default-600 mb-6">Select a product range from the {productGroup} category:</p>
 
       <motion.div className="grid grid-cols-1 sm:grid-cols-2 gap-4" variants={container} initial="hidden" animate="show">
-        {ranges.map((range, index) => {
-          const rangeData = getProductRangeData(range);
-          const imageUrl =
-            rangeData.image || `https://img.heroui.chat/image/${getImageCategory(productGroup)}?w=300&h=300&u=${productGroup}_${index}`;
-
+        {activeRanges.map((range, index) => {
+          const isSelected = selection === range.name;
           return (
-            <motion.div key={range} variants={item}>
+            <motion.div key={range.id} variants={item}>
               <Card
                 isPressable
-                onPress={() => onSelect(range)}
+                onPress={() => onSelect(range.name)}
                 className={`transition-all duration-200 ${
-                  selection === range
-                    ? "border-2 border-primary shadow-md"
-                    : "border border-default-200 hover:border-primary hover:shadow-sm"
+                  isSelected ? "border-2 border-primary shadow-md" : "border border-default-200 hover:border-primary hover:shadow-sm"
                 }`}
               >
                 <CardBody className="p-0">
                   <div className="flex flex-col sm:flex-row">
-                    <div className="w-full sm:w-1/3 h-40">
-                      <Image removeWrapper alt={`${range} product range`} className="w-full h-full object-cover" src={imageUrl} />
-                    </div>
+                    {range.image && (
+                      <CardHeader className="p-0">
+                        <Image src={range.image} alt={range.name} className="w-full h-40 object-cover" radius="none" />
+                      </CardHeader>
+                    )}
                     <div className="p-4 flex-1">
-                      <h3 className="text-lg font-medium">{range}</h3>
-                      <p className="text-default-500 text-sm mt-2">{rangeData.description}</p>
+                      <h3 className="text-lg font-medium">{range.name}</h3>
+                      <p className="text-default-500 text-sm mt-2">{range.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {rangeData.tags.map((tag) => (
+                        {range.tags.map((tag) => (
                           <span key={tag} className="text-xs px-2 py-1 bg-default-100 text-default-700 rounded-medium">
                             {tag}
                           </span>
@@ -120,7 +144,7 @@ function getImageCategory(productGroup: string): string {
   return mapping[productGroup] || "places";
 }
 
-function getDefaultRangeDescription(range: string, productGroup: string): string {
+function getDefaultRangeDescription(range: string): string {
   const descriptions: Record<string, string> = {
     // Shelter ranges
     Peninsula: "Modern shelters with excellent weather protection for parks and urban settings",
@@ -165,7 +189,7 @@ function getDefaultRangeDescription(range: string, productGroup: string): string
     "Pathway Light": "Directional lighting for walkways and pedestrian areas",
   };
 
-  return descriptions[range] || `${range} product range for ${productGroup}`;
+  return descriptions[range] || `${range} product line with various options and configurations.`;
 }
 
 function getDefaultFeatureTags(range: string, productGroup: string): string[] {

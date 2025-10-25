@@ -131,6 +131,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
             data={{
               ranges: stepData?.ranges || {},
               productRanges: stepData?.productRanges || [],
+              relationships: stepData?.relationships,
             }}
             productGroup={selections.productGroup || ""}
             selection={selections.productRange || null}
@@ -143,6 +144,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
             data={{
               products: stepData?.products || {},
               productsData: stepData?.productsData || [],
+              relationships: stepData?.relationships,
             }}
             productRange={selections.productRange || ""}
             selection={selections.individualProduct || null}

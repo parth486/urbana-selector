@@ -62,6 +62,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     imageGallery: [],
     files: {},
     options: undefined,
+    active: true,
   });
 
   const [productOptions, setProductOptions] = React.useState<Record<string, Array<{ value: string; imageUrl?: string }>>>({});
@@ -136,6 +137,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       imageGallery: [],
       files: {},
       options: undefined,
+      active: true,
     });
     setProductOptions({});
     setSelectedRanges(new Set());
@@ -155,6 +157,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         imageGallery: [...product.imageGallery],
         files: { ...product.files },
         options: product.options,
+        active: product.active,
       });
 
       // Load product-specific options
@@ -584,8 +587,12 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, onDelete }) => {
+  const { updateProduct } = useDataBuilderStore();
   const hasImages = product.imageGallery.length > 0 && product.imageGallery[0];
 
+  const handleToggleActive = () => {
+    updateProduct(product.id, { active: typeof product.active === "undefined" ? false : !product.active });
+  };
   return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
@@ -600,6 +607,11 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, o
             )}
             <div>
               <h4 className="text-lg font-semibold">{product.name}</h4>
+              {typeof product.active !== "undefined" && !product.active && (
+                <Chip size="sm" variant="flat" color="warning">
+                  Inactive
+                </Chip>
+              )}
               <Chip size="sm" variant="flat" color="success">
                 {product.code}
               </Chip>
@@ -614,6 +626,15 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, o
             <DropdownMenu aria-label="Product Actions">
               <DropdownItem key="edit" startContent={<Icon icon="lucide:edit" width={16} />} onPress={() => onEdit(product)}>
                 Edit
+              </DropdownItem>
+              <DropdownItem
+                key="toggle-active"
+                startContent={
+                  <Icon icon={typeof product.active !== "undefined" && !product.active ? "lucide:eye" : "lucide:eye-off"} width={16} />
+                }
+                onPress={handleToggleActive}
+              >
+                {typeof product.active !== "undefined" && !product.active ? "Activate" : "Deactivate"}
               </DropdownItem>
               <DropdownItem
                 key="delete"

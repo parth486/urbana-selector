@@ -73,11 +73,13 @@ class FrontendInit {
 				// Add product ranges data
 				if ( ! isset( $product_data['stepperForm']['steps'][1]['productRanges'] ) ) {
 					$product_data['stepperForm']['steps'][1]['productRanges'] = $builder_data['productRanges'];
+					$product_data['stepperForm']['steps'][1]['relationships'] = $builder_data['relationships'];
 				}
 
 				// Add products data
 				if ( ! isset( $product_data['stepperForm']['steps'][2]['productsData'] ) ) {
-					$product_data['stepperForm']['steps'][2]['productsData'] = $builder_data['products'];
+					$product_data['stepperForm']['steps'][2]['productsData']  = $builder_data['products'];
+					$product_data['stepperForm']['steps'][2]['relationships'] = $builder_data['relationships'];
 				}
 			}
 

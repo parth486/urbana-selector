@@ -348,6 +348,196 @@ export class AssetGenerator {
     }
   }
 
+  /**
+   * Fetch Digital Ocean assets for selected products by building appropriate prefix
+   * then filtering results client-side
+   */
+  static async fetchDigitalOceanAssetsForProducts(
+    productCodes: string[],
+    productGroups: ProductGroup[],
+    productRanges: ProductRange[],
+    products: Product[],
+    relationships: Relationships
+  ): Promise<DigitalOceanResult> {
+    try {
+      // Determine the common prefix for all selected products
+      // This helps reduce the data fetched from Digital Ocean
+      const prefixes: string[] = [];
+
+      productCodes.forEach((code) => {
+        const product = products.find((p) => p.code.toLowerCase() === code.toLowerCase());
+        if (!product) return;
+
+        // Find range for this product
+        const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => productIds.includes(product.id))?.[0];
+        if (!rangeId) return;
+
+        const range = productRanges.find((r) => r.id === rangeId);
+        if (!range) return;
+
+        // Find group for this range
+        const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => rangeIds.includes(rangeId))?.[0];
+        if (!groupId) return;
+
+        const group = productGroups.find((g) => g.id === groupId);
+        if (!group) return;
+
+        // Build prefix: category/range/product_code
+        const category = this.sanitizePathSegment(group.name);
+        const rangeName = this.sanitizePathSegment(range.name);
+        const productCode = this.sanitizePathSegment(product.code);
+
+        prefixes.push(`${category}/${rangeName}/${productCode}`);
+      });
+
+      if (prefixes.length === 0) {
+        throw new Error("No valid products found to sync");
+      }
+
+      // Find the most common prefix to minimize data transfer
+      // For now, we'll use the shortest common prefix or fetch all if they're too different
+      const commonPrefix = this.findCommonPrefix(prefixes);
+
+      // Fetch all assets with the common prefix
+      const result = await this.fetchDigitalOceanAssets("");
+
+      if (!result.success) {
+        return result;
+      }
+
+      // Filter structured data to only include selected products
+      const filteredStructuredData = this.filterStructuredDataByProducts(
+        result.structured_data,
+        productCodes,
+        productGroups,
+        productRanges,
+        products,
+        relationships
+      );
+
+      // Return filtered result
+      return {
+        ...result,
+        structured_data: filteredStructuredData,
+      };
+    } catch (error) {
+      console.error("Error fetching Digital Ocean assets for products:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find the most specific common prefix for a set of paths
+   */
+  private static findCommonPrefix(prefixes: string[]): string {
+    if (prefixes.length === 0) return "";
+    if (prefixes.length === 1) return prefixes[0];
+
+    // Split all prefixes into parts
+    const allParts = prefixes.map((p) => p.split("/"));
+
+    // Find common parts from the beginning
+    const commonParts: string[] = [];
+    const minLength = Math.min(...allParts.map((p) => p.length));
+
+    for (let i = 0; i < minLength; i++) {
+      const part = allParts[0][i];
+      if (allParts.every((parts) => parts[i] === part)) {
+        commonParts.push(part);
+      } else {
+        break;
+      }
+    }
+
+    // Return common prefix, or empty string if no common parts
+    return commonParts.length > 0 ? commonParts.join("/") + "/" : "";
+  }
+
+  /**
+   * Filter structured data to only include specified product codes
+   */
+  private static filterStructuredDataByProducts(
+    structuredData: StructuredData,
+    productCodes: string[],
+    productGroups: ProductGroup[],
+    productRanges: ProductRange[],
+    products: Product[],
+    relationships: Relationships
+  ): StructuredData {
+    const filtered: StructuredData = {};
+
+    // Build a map of product codes to their expected structure
+    const productPaths = new Map<
+      string,
+      {
+        category: string;
+        range: string;
+        productCode: string;
+      }
+    >();
+
+    productCodes.forEach((code) => {
+      const product = products.find((p) => p.code.toLowerCase() === code.toLowerCase());
+      if (!product) return;
+
+      const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => productIds.includes(product.id))?.[0];
+      if (!rangeId) return;
+
+      const range = productRanges.find((r) => r.id === rangeId);
+      if (!range) return;
+
+      const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => rangeIds.includes(rangeId))?.[0];
+      if (!groupId) return;
+
+      const group = productGroups.find((g) => g.id === groupId);
+      if (!group) return;
+
+      productPaths.set(code.toLowerCase(), {
+        category: group.name,
+        range: range.name,
+        productCode: code,
+      });
+    });
+
+    // Filter structured data
+    Object.entries(structuredData).forEach(([categoryKey, categoryData]) => {
+      Object.entries(categoryData).forEach(([rangeKey, rangeData]) => {
+        Object.entries(rangeData).forEach(([productKey, productData]) => {
+          // Check if this product is in our selected list
+          const normalizedProductCode = productKey.toLowerCase();
+
+          // Find matching product path
+          for (const [code, path] of productPaths.entries()) {
+            if (code === normalizedProductCode) {
+              // Verify category and range match (case-insensitive)
+              const categoryMatch =
+                categoryKey.toLowerCase().includes(path.category.toLowerCase()) ||
+                path.category.toLowerCase().includes(categoryKey.toLowerCase());
+
+              const rangeMatch = rangeKey.toLowerCase().replace(/[\s-_]/g, "") === path.range.toLowerCase().replace(/[\s-_]/g, "");
+
+              if (categoryMatch && rangeMatch) {
+                // Initialize structure if needed
+                if (!filtered[categoryKey]) {
+                  filtered[categoryKey] = {};
+                }
+                if (!filtered[categoryKey][rangeKey]) {
+                  filtered[categoryKey][rangeKey] = {};
+                }
+
+                // Add this product's data
+                filtered[categoryKey][rangeKey][productKey] = productData;
+              }
+              break;
+            }
+          }
+        });
+      });
+    });
+
+    return filtered;
+  }
+
   static async getDigitalOceanConfig(): Promise<DigitalOceanConfig> {
     try {
       const response = await fetch("/wp-json/urbana/v1/digital-ocean/config", {

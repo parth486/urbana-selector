@@ -32,18 +32,14 @@ interface DigitalOceanSettingsProps {
 
 const REGIONS = [
   { key: "nyc1", label: "New York 1" },
-  { key: "nyc2", label: "New York 2" },
   { key: "nyc3", label: "New York 3" },
   { key: "ams3", label: "Amsterdam 3" },
-  { key: "sfo2", label: "San Francisco 2" },
-  { key: "sfo3", label: "San Francisco 3" },
   { key: "sgp1", label: "Singapore 1" },
   { key: "lon1", label: "London 1" },
   { key: "fra1", label: "Frankfurt 1" },
   { key: "tor1", label: "Toronto 1" },
+  { key: "sfo3", label: "San Francisco 3" },
   { key: "blr1", label: "Bangalore 1" },
-  { key: "syd1", label: "Sydney 1" },
-  { key: "atl1", label: "Atlanta 1" },
 ];
 
 export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ settings, onChange }) => {

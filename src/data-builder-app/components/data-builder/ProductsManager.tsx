@@ -22,6 +22,7 @@ import {
   Tabs,
   Tab,
   Image,
+  Checkbox,
   Divider,
   addToast,
 } from "@heroui/react";
@@ -68,6 +69,9 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
   const [productOptions, setProductOptions] = React.useState<Record<string, Array<{ value: string; imageUrl?: string }>>>({});
 
   const [selectedRanges, setSelectedRanges] = React.useState<Set<string>>(new Set());
+  const [selectedProducts, setSelectedProducts] = React.useState<Set<string>>(new Set());
+  const [isSyncingDO, setIsSyncingDO] = React.useState(false);
+
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   // Get category and range info for current product
@@ -341,6 +345,134 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     return { grouped, ungrouped };
   }, [products, relationships.rangeToProducts, productRanges]);
 
+  const handleToggleProductSelection = useCallback((productId: string) => {
+    setSelectedProducts((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleSelectAllProducts = useCallback(() => {
+    if (selectedProducts.size === products.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(products.map((p) => p.id)));
+    }
+  }, [products, selectedProducts.size]);
+
+  const handleSyncWithDigitalOcean = useCallback(async () => {
+    if (selectedProducts.size === 0) {
+      addToast({
+        color: "warning",
+        title: "No products selected",
+        description: "Please select at least one product to sync",
+      });
+      return;
+    }
+
+    const confirmed = confirm(
+      `This will fetch and update assets from Digital Ocean for ${selectedProducts.size} selected product(s). Continue?`
+    );
+
+    if (!confirmed) return;
+
+    setIsSyncingDO(true);
+
+    try {
+      // Get product codes from selected IDs
+      const selectedProductsArray = products.filter((p) => selectedProducts.has(p.id));
+      const selectedProductCodes = selectedProductsArray.map((p) => p.code);
+
+      // Fetch filtered Digital Ocean assets for selected products
+      const result = await AssetGenerator.fetchDigitalOceanAssetsForProducts(
+        selectedProductCodes,
+        productGroups,
+        productRanges,
+        products,
+        relationships
+      );
+
+      if (result.success) {
+        // Update only the selected products with fetched data
+        const updatedProducts = AssetGenerator.updateProductPathsFromDigitalOcean(
+          selectedProductsArray,
+          result.structured_data,
+          productGroups,
+          productRanges,
+          relationships
+        );
+
+        let updatedCount = 0;
+        let notFoundCount = 0;
+
+        updatedProducts.forEach((updatedProduct) => {
+          const originalProduct = products.find((p) => p.id === updatedProduct.id);
+
+          if (originalProduct) {
+            const hasChanges =
+              JSON.stringify(originalProduct.imageGallery) !== JSON.stringify(updatedProduct.imageGallery) ||
+              JSON.stringify(originalProduct.files) !== JSON.stringify(updatedProduct.files) ||
+              JSON.stringify(originalProduct.options) !== JSON.stringify(updatedProduct.options);
+
+            if (hasChanges) {
+              updateProduct(updatedProduct.id, {
+                imageGallery: updatedProduct.imageGallery,
+                files: updatedProduct.files,
+                options: updatedProduct.options,
+              });
+              updatedCount++;
+            }
+          }
+        });
+
+        // Check for products that weren't found in Digital Ocean
+        notFoundCount =
+          selectedProducts.size - updatedProducts.filter((p) => p.imageGallery.length > 0 || Object.keys(p.files).length > 0).length;
+
+        if (updatedCount > 0) {
+          addToast({
+            color: "success",
+            title: "Digital Ocean sync completed!",
+            description: `Updated ${updatedCount} out of ${selectedProducts.size} selected products${
+              notFoundCount > 0 ? `. ${notFoundCount} products had no assets found` : ""
+            }`,
+          });
+        } else if (notFoundCount === selectedProducts.size) {
+          addToast({
+            color: "warning",
+            title: "No assets found",
+            description: "No assets were found in Digital Ocean for the selected products",
+          });
+        } else {
+          addToast({
+            color: "secondary",
+            title: "No updates needed",
+            description: "Selected products already have the latest assets",
+          });
+        }
+
+        // Clear selection after sync
+        setSelectedProducts(new Set());
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error("Error syncing with Digital Ocean:", error);
+      addToast({
+        color: "danger",
+        title: "Sync failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+      });
+    } finally {
+      setIsSyncingDO(false);
+    }
+  }, [selectedProducts, products, productGroups, productRanges, relationships, updateProduct]);
+
   const { grouped, ungrouped } = getGroupedProducts();
 
   return (
@@ -360,6 +492,29 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
           >
             Refetch All Assets
           </Button> */}
+
+          {products.length > 0 && (
+            <Button
+              color="default"
+              variant="flat"
+              size="sm"
+              onPress={handleSelectAllProducts}
+              startContent={<Icon icon={selectedProducts.size === products.length ? "lucide:square-check" : "lucide:square"} width={16} />}
+            >
+              {selectedProducts.size === products.length ? "Deselect All" : "Select All"}
+            </Button>
+          )}
+          {selectedProducts.size > 0 && (
+            <Button
+              color="secondary"
+              variant="flat"
+              onPress={handleSyncWithDigitalOcean}
+              isLoading={isSyncingDO}
+              startContent={!isSyncingDO ? <Icon icon="lucide:cloud-download" width={18} /> : undefined}
+            >
+              {isSyncingDO ? "Syncing..." : `Sync DO (${selectedProducts.size})`}
+            </Button>
+          )}
           <Button
             color="primary"
             onPress={handleAddProduct}
@@ -412,7 +567,14 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} onEdit={handleEditProduct} onDelete={handleDeleteProduct} />
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onEdit={handleEditProduct}
+                    onDelete={handleDeleteProduct}
+                    isSelected={selectedProducts.has(product.id)}
+                    onToggleSelect={handleToggleProductSelection}
+                  />
                 ))}
               </div>
             </div>
@@ -430,7 +592,14 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {ungrouped.map((product) => (
-                  <ProductCard key={product.id} product={product} onEdit={handleEditProduct} onDelete={handleDeleteProduct} />
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onEdit={handleEditProduct}
+                    onDelete={handleDeleteProduct}
+                    isSelected={selectedProducts.has(product.id)}
+                    onToggleSelect={handleToggleProductSelection}
+                  />
                 ))}
               </div>
             </div>
@@ -584,9 +753,11 @@ interface ProductCardProps {
   product: Product;
   onEdit: (product: Product) => void;
   onDelete: (productId: string) => void;
+  isSelected: boolean;
+  onToggleSelect: (productId: string) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, onDelete }) => {
+const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, onDelete, isSelected, onToggleSelect }) => {
   const { updateProduct } = useDataBuilderStore();
   const hasImages = product.imageGallery.length > 0 && product.imageGallery[0];
 
@@ -597,7 +768,8 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, o
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1">
+            <Checkbox isSelected={isSelected} onValueChange={() => onToggleSelect(product.id)} size="sm" />
             {hasImages ? (
               <Image src={product.imageGallery[0]} alt={product.name} width={40} height={40} className="rounded-lg object-cover" />
             ) : (

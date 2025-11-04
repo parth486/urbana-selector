@@ -172,6 +172,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
               name: group.name,
               icon: group.icon,
               description: group.description,
+              active: group.active,
             });
           });
 
@@ -182,6 +183,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
               image: range.image,
               description: range.description,
               tags: range.tags,
+              active: range.active,
             });
 
             // Find which group this range belongs to
@@ -203,6 +205,7 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
               imageGallery: product.imageGallery,
               files: product.files,
               options: product.options, // Product-specific options
+              active: product.active,
             });
 
             // Find which range this product belongs to

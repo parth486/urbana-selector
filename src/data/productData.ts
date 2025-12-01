@@ -69,6 +69,16 @@ export const productData = {
               "Revit Model": "Peninsula_K301.rvt",
               "CAD Drawing": "Peninsula_K301.dwg",
             },
+            faqs: [
+              {
+                question: "What is the recommended maintenance schedule for the K301?",
+                answer: "We recommend a visual inspection every 6 months and a more detailed maintenance check annually to ensure structural integrity and finish longevity.",
+              },
+              {
+                question: "Can the K301 be fitted with solar lighting?",
+                answer: "Yes, the K301 supports retrofit solar lighting kits in the roof panel; select the 'Solar Panels' roof option during configuration.",
+              },
+            ],
           },
           K302: {
             name: "Peninsula K302",
@@ -83,6 +93,12 @@ export const productData = {
               "Revit Model": "Peninsula_K302.rvt",
               "CAD Drawing": "Peninsula_K302.dwg",
             },
+            faqs: [
+              {
+                question: "Is the K302 suitable for coastal environments?",
+                answer: "Yes — the K302's materials are specified for higher corrosion resistance and are suitable for coastal installation with correct site selection.",
+              },
+            ],
           },
           E201: {
             name: "EcoSan E201",
@@ -97,6 +113,16 @@ export const productData = {
               "Revit Model": "EcoSan_E201.rvt",
               "Maintenance Manual": "EcoSan_E201_Maintenance.pdf",
             },
+            faqs: [
+              {
+                question: "How does the composting system work?",
+                answer: "The EcoSan E201 uses a dry composting system that separates liquids and solids and treats waste on-site to reduce water usage significantly.",
+              },
+              {
+                question: "Can the E201 operate off-grid?",
+                answer: "Yes, the E201 is designed for remote locations and can operate without mains water, though regular servicing is required.",
+              },
+            ],
           },
           SS101: {
             name: "Small Span SS101",

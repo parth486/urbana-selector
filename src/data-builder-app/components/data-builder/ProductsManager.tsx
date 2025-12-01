@@ -28,11 +28,13 @@ import {
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { useDataBuilderStore, Product } from "../../stores/useDataBuilderStore";
+import SecureImage from "./SecureImage";
 import { FileManager } from "./product-fields/FileManager";
 import { ImageGalleryManager } from "./product-fields/ImageGalleryManager";
 import { SpecificationManager } from "./product-fields/SpecificationManager";
 import { OptionsManager } from "./product-fields/OptionsManager";
 import { AssetGenerator } from "../../utils/assetGenerator";
+import { DigitalOceanSyncPanel } from "./DigitalOceanSyncPanel";
 
 interface ProductsManagerProps {
   stepperID?: number | null;
@@ -63,6 +65,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     imageGallery: [],
     files: {},
     options: undefined,
+    faqs: [],
     active: true,
   });
 
@@ -113,7 +116,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         products,
         relationships,
         updateProduct,
-        stepperID
+        stepperID ?? undefined
       );
 
       addToast({
@@ -160,6 +163,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         specifications: [...product.specifications],
         imageGallery: [...product.imageGallery],
         files: { ...product.files },
+        faqs: product.faqs || [],
         options: product.options,
         active: product.active,
       });
@@ -192,7 +196,14 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
   );
 
   const handleInputChange = useCallback(
-    (field: keyof Omit<Product, "id">, value: string | string[] | Record<string, string>) => {
+    (
+      field: keyof Omit<Product, "id">,
+      value:
+        | string
+        | string[]
+        | Record<string, string>
+        | Array<{ question: string; answer: string }>
+    ) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
 
       // Generate code from name if it's empty
@@ -248,12 +259,80 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     return Object.keys(newErrors).length === 0;
   }, [formData, products, editingProduct, selectedRanges]);
 
-  const handleSubmit = useCallback(() => {
+  const handleRenameInDigitalOcean = async (oldCode: string, newCode: string, rangeName: string, groupName: string) => {
+    try {
+      const oldPath = `${groupName}/${rangeName}/${oldCode}`;
+      const newPath = `${groupName}/${rangeName}/${newCode}`;
+      
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/rename-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ 
+          old_path: oldPath,
+          new_path: newPath
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to rename folder');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to rename folder in Digital Ocean:', error);
+      throw error;
+    }
+  };
+
+  const handleSubmit = useCallback(async () => {
     if (!validateForm()) {
       return;
     }
 
+    let needsRename = false;
+    let oldProductCode: string | null = null;
+    let rangeInfo: { rangeName: string; groupName: string } | null = null;
+
     if (editingProduct) {
+      // Check if code has changed
+      needsRename = editingProduct.code !== formData.code;
+      oldProductCode = editingProduct.code;
+
+      // Get range and group info for rename path
+      if (needsRename) {
+        const rangeId = Object.entries(relationships.rangeToProducts).find(([_, productIds]) => 
+          productIds.includes(editingProduct.id)
+        )?.[0];
+
+        if (rangeId) {
+          const range = productRanges.find(r => r.id === rangeId);
+          if (range) {
+            const groupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => 
+              rangeIds.includes(rangeId)
+            )?.[0];
+
+            if (groupId) {
+              const group = productGroups.find(g => g.id === groupId);
+              if (group) {
+                rangeInfo = {
+                  rangeName: range.name,
+                  groupName: group.name
+                };
+              }
+            }
+          }
+        }
+      }
+
       // Update existing product
       updateProduct(editingProduct.id, {
         ...formData,
@@ -296,6 +375,27 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       });
     }
 
+    // Handle Digital Ocean rename if needed
+    if (needsRename && oldProductCode && rangeInfo) {
+      const shouldRename = confirm(
+        `The product code has changed from "${oldProductCode}" to "${formData.code}".\n\n` +
+        `Do you want to rename the folder in Digital Ocean as well?\n` +
+        `This will move all contents from:\n` +
+        `  ${rangeInfo.groupName}/${rangeInfo.rangeName}/${oldProductCode}/\n` +
+        `to:\n` +
+        `  ${rangeInfo.groupName}/${rangeInfo.rangeName}/${formData.code}/`
+      );
+
+      if (shouldRename) {
+        try {
+          await handleRenameInDigitalOcean(oldProductCode, formData.code, rangeInfo.rangeName, rangeInfo.groupName);
+          alert(`✅ Successfully renamed folder in Digital Ocean from "${oldProductCode}" to "${formData.code}"`);
+        } catch (error) {
+          alert(`❌ Failed to rename folder in Digital Ocean. Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThe product has been updated in WordPress, but the Digital Ocean folder was not renamed.`);
+        }
+      }
+    }
+
     onClose();
   }, [
     validateForm,
@@ -304,10 +404,13 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     formData,
     productOptions,
     relationships.rangeToProducts,
+    relationships.groupToRanges,
     unlinkProductFromRange,
     addProduct,
     selectedRanges,
     linkProductToRange,
+    productRanges,
+    productGroups,
     onClose,
   ]);
 
@@ -475,6 +578,233 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
 
   const { grouped, ungrouped } = getGroupedProducts();
 
+  // Digital Ocean Sync State - organized by ranges like the Manage Products tab
+  const [syncItemsGrouped, setSyncItemsGrouped] = React.useState<{
+    grouped: Record<string, Array<{
+      id: string;
+      name: string;
+      type: 'product';
+      exists?: boolean;
+      checked?: boolean;
+    }>>;
+    ungrouped: Array<{
+      id: string;
+      name: string;
+      type: 'product';
+      exists?: boolean;
+      checked?: boolean;
+    }>;
+  }>({
+    grouped: {},
+    ungrouped: []
+  });
+
+  // Function to check folder existence with enhanced console logging
+  const checkFolderExistence = React.useCallback(async () => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/check-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ type: 'products' }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // Debug log the API results
+        console.log('[DO Sync] API /check-folders result:', result);
+        if (result.success && result.results) {
+          // Debug log the current sync items before update
+          setSyncItemsGrouped(prev => {
+            console.log('[DO Sync] Previous syncItemsGrouped:', prev);
+            const newGrouped = { ...prev.grouped };
+            const newUngrouped = [...prev.ungrouped];
+
+            // Update grouped items
+            Object.keys(newGrouped).forEach(rangeName => {
+              newGrouped[rangeName] = newGrouped[rangeName].map(item => {
+                const existenceData = result.results.find((r: any) => r.id === item.id);
+                if (!existenceData) {
+                  console.warn(`[DO Sync] No existence data for item id: ${item.id}`);
+                } else {
+                  console.log(`[DO Sync] Mapping item id: ${item.id}, exists:`, existenceData.exists);
+                }
+                return {
+                  ...item,
+                  exists: existenceData ? existenceData.exists : false
+                };
+              });
+            });
+
+            // Update ungrouped items
+            newUngrouped.forEach((item, index) => {
+              const existenceData = result.results.find((r: any) => r.id === item.id);
+              if (existenceData) {
+                console.log(`[DO Sync] Mapping ungrouped item id: ${item.id}, exists:`, existenceData.exists);
+                newUngrouped[index] = { ...item, exists: existenceData.exists };
+              } else {
+                console.warn(`[DO Sync] No existence data for ungrouped item id: ${item.id}`);
+              }
+            });
+
+            const updated = {
+              grouped: newGrouped,
+              ungrouped: newUngrouped
+            };
+            console.log('[DO Sync] Updated syncItemsGrouped:', updated);
+            return updated;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to check folder existence:', error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    // Initialize sync items from grouped products
+    const { grouped, ungrouped } = getGroupedProducts();
+    
+    const syncGrouped: Record<string, Array<{
+      id: string;
+      name: string;
+      type: 'product';
+      exists?: boolean;
+      checked?: boolean;
+    }>> = {};
+
+    // Process grouped products
+    Object.entries(grouped).forEach(([rangeName, rangeProducts]) => {
+      syncGrouped[rangeName] = rangeProducts.map(product => ({
+        id: product.id,
+        name: product.name || product.code,
+        type: 'product' as const,
+        exists: false,
+        checked: false,
+      }));
+    });
+
+    // Process ungrouped products
+    const syncUngrouped = ungrouped.map(product => ({
+      id: product.id,
+      name: product.name || product.code,
+      type: 'product' as const,
+      exists: false,
+      checked: false,
+    }));
+
+    setSyncItemsGrouped({
+      grouped: syncGrouped,
+      ungrouped: syncUngrouped
+    });
+
+    // Check folder existence after state is set
+    checkFolderExistence();
+  }, [products, relationships, productRanges]); // Removed checkFolderExistence from deps
+
+  const handleItemCheck = (id: string, checked: boolean) => {
+    setSyncItemsGrouped(prev => {
+      const newGrouped = { ...prev.grouped };
+      const newUngrouped = [...prev.ungrouped];
+
+      // Check in grouped items
+      Object.keys(newGrouped).forEach(rangeName => {
+        newGrouped[rangeName] = newGrouped[rangeName].map(item => 
+          item.id === id ? { ...item, checked } : item
+        );
+      });
+
+      // Check in ungrouped items
+      const ungroupedIndex = newUngrouped.findIndex(item => item.id === id);
+      if (ungroupedIndex !== -1) {
+        newUngrouped[ungroupedIndex] = { ...newUngrouped[ungroupedIndex], checked };
+      }
+
+      return {
+        grouped: newGrouped,
+        ungrouped: newUngrouped
+      };
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSyncItemsGrouped(prev => {
+      const newGrouped = { ...prev.grouped };
+      const newUngrouped = [...prev.ungrouped];
+
+      // Update all grouped items
+      Object.keys(newGrouped).forEach(rangeName => {
+        newGrouped[rangeName] = newGrouped[rangeName].map(item => ({ ...item, checked }));
+      });
+
+      // Update all ungrouped items
+      newUngrouped.forEach((item, index) => {
+        newUngrouped[index] = { ...item, checked };
+      });
+
+      return {
+        grouped: newGrouped,
+        ungrouped: newUngrouped
+      };
+    });
+  };
+
+  const handleSync = async (selectedIds: string[]) => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/create-product-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ product_ids: selectedIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create folders');
+      }
+
+      // Update exists status for synced items
+      setSyncItemsGrouped(prev => {
+        const newGrouped = { ...prev.grouped };
+        const newUngrouped = [...prev.ungrouped];
+
+        // Update grouped items
+        Object.keys(newGrouped).forEach(rangeName => {
+          newGrouped[rangeName] = newGrouped[rangeName].map(item => 
+            selectedIds.includes(item.id) 
+              ? { ...item, exists: true, checked: false }
+              : item
+          );
+        });
+
+        // Update ungrouped items
+        newUngrouped.forEach((item, index) => {
+          if (selectedIds.includes(item.id)) {
+            newUngrouped[index] = { ...item, exists: true, checked: false };
+          }
+        });
+
+        return {
+          grouped: newGrouped,
+          ungrouped: newUngrouped
+        };
+      });
+
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-6">
@@ -526,7 +856,15 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         </div>
       </div>
 
-      {productRanges.length === 0 ? (
+      <Tabs aria-label="Products Options" className="mb-6">
+        <Tab key="manage" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:package" width={16} />
+            <span>Manage Products</span>
+          </div>
+        }>
+          <div className="mt-4">
+            {productRanges.length === 0 ? (
         <Card>
           <CardBody className="text-center py-12">
             <div className="flex flex-col items-center gap-4">
@@ -556,29 +894,53 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       ) : (
         <div className="space-y-6">
           {/* Grouped Products */}
-          {Object.entries(grouped).map(([rangeName, products]) => (
-            <div key={rangeName}>
-              <h4 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Icon icon="lucide:grid-3x3" width={18} />
-                {rangeName}
-                <Chip size="sm" variant="flat">
-                  {products.length} product{products.length !== 1 ? "s" : ""}
-                </Chip>
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {products.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onEdit={handleEditProduct}
-                    onDelete={handleDeleteProduct}
-                    isSelected={selectedProducts.has(product.id)}
-                    onToggleSelect={handleToggleProductSelection}
-                  />
-                ))}
+          {Object.entries(grouped).map(([rangeName, products]) => {
+            // Find the range and its parent group
+            const range = productRanges.find(r => r.name === rangeName);
+            let groupName = null;
+            let groupIcon = null;
+            
+            if (range) {
+              const groupId = Object.entries(relationships.groupToRanges).find(([, rangeIds]) =>
+                rangeIds.includes(range.id)
+              )?.[0];
+              const group = groupId ? productGroups.find(g => g.id === groupId) : null;
+              if (group) {
+                groupName = group.name;
+                groupIcon = group.icon;
+              }
+            }
+
+            return (
+              <div key={rangeName}>
+                {groupName && (
+                  <div className="mb-2 flex items-center gap-2 text-primary">
+                    {groupIcon && <Icon icon={groupIcon} width={16} />}
+                    <span className="text-sm font-medium">{groupName}</span>
+                  </div>
+                )}
+                <h4 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Icon icon="lucide:grid-3x3" width={18} />
+                  {rangeName}
+                  <Chip size="sm" variant="flat">
+                    {products.length} product{products.length !== 1 ? "s" : ""}
+                  </Chip>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {products.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onEdit={handleEditProduct}
+                      onDelete={handleDeleteProduct}
+                      isSelected={selectedProducts.has(product.id)}
+                      onToggleSelect={handleToggleProductSelection}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Ungrouped Products */}
           {ungrouped.length > 0 && (
@@ -604,8 +966,283 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
               </div>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+          </div>
+        </Tab>
+        
+        <Tab key="sync" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:cloud-upload" width={16} />
+            <span>Digital Ocean Sync</span>
+          </div>
+        }>
+          <div className="mt-4">
+            {/* Custom Grouped Digital Ocean Sync Panel for Products */}
+            <Card className="urbana-card">
+              <CardHeader className="flex gap-3">
+                <Icon icon="lucide:cloud-upload" width={24} />
+                <div className="flex flex-col">
+                  <p className="text-md font-semibold">Products - Digital Ocean Sync</p>
+                  <p className="text-small text-default-500">
+                    Organize by ranges like the Manage Products tab
+                  </p>
+                </div>
+              </CardHeader>
+              <CardBody>
+                {/* Global controls */}
+                <div className="flex items-center justify-between mb-4">
+                  <Button
+                    color="primary" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(true)}
+                    startContent={<Icon icon="lucide:check-square" width={16} />}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    color="default" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(false)}
+                    startContent={<Icon icon="lucide:square" width={16} />}
+                  >
+                    Clear All
+                  </Button>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    onPress={() => {
+                      const selectedIds: string[] = [];
+                      Object.values(syncItemsGrouped.grouped).forEach(rangeProducts => {
+                        rangeProducts.forEach(product => {
+                          if (product.checked) selectedIds.push(product.id);
+                        });
+                      });
+                      syncItemsGrouped.ungrouped.forEach(product => {
+                        if (product.checked) selectedIds.push(product.id);
+                      });
+                      handleSync(selectedIds);
+                    }}
+                    isDisabled={(() => {
+                      let hasSelected = false;
+                      Object.values(syncItemsGrouped.grouped).forEach(rangeProducts => {
+                        rangeProducts.forEach(product => {
+                          if (product.checked) hasSelected = true;
+                        });
+                      });
+                      syncItemsGrouped.ungrouped.forEach(product => {
+                        if (product.checked) hasSelected = true;
+                      });
+                      return !hasSelected;
+                    })()}
+                    startContent={<Icon icon="lucide:upload" width={16} />}
+                  >
+                    Sync Selected
+                  </Button>
+                </div>
+
+                {Object.keys(syncItemsGrouped.grouped).length === 0 && syncItemsGrouped.ungrouped.length === 0 ? (
+                  <div className="text-center py-8 text-foreground-500">
+                    <Icon icon="lucide:folder-x" width={48} className="mx-auto mb-2 opacity-50" />
+                    <p>No products available to sync</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Grouped products with card layout */}
+                    {Object.entries(syncItemsGrouped.grouped).map(([rangeName, rangeProducts]) => {
+                      // Find the range to get its parent group
+                      const range = productRanges.find(r => r.name === rangeName);
+                      const groupId = range ? Object.entries(relationships.groupToRanges).find(([, rangeIds]) =>
+                        rangeIds.includes(range.id)
+                      )?.[0] : null;
+                      const productGroup = groupId ? productGroups.find(g => g.id === groupId) : null;
+
+                      return (
+                        <div key={rangeName} className="space-y-3">
+                          {/* Show group name and icon above range */}
+                          {productGroup && (
+                            <div className="flex items-center gap-2 mb-1">
+                              <Icon icon={productGroup.icon} width={16} className="text-default-500" />
+                              <span className="text-sm text-default-500">{productGroup.name}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <Icon icon="lucide:grid-3x3" width={18} className="text-primary" />
+                            <h4 className="font-semibold text-lg text-primary">{rangeName}</h4>
+                            <Chip size="sm" variant="flat" color="primary">
+                              {rangeProducts.length} product{rangeProducts.length !== 1 ? 's' : ''}
+                            </Chip>
+                          </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {rangeProducts.map((product) => {
+                            const productData = products.find(p => p.id === product.id);
+
+                            return (
+                              <Card 
+                                key={product.id} 
+                                className={`hover:shadow-lg transition-all cursor-pointer border-2 ${
+                                  product.checked 
+                                    ? 'border-primary bg-primary/5' 
+                                    : 'border-transparent hover:border-primary/30'
+                                }`}
+                                isPressable
+                                onPress={() => handleItemCheck(product.id, !product.checked)}
+                              >
+                                <CardHeader className="pb-3">
+                                  <div className="flex justify-between items-start w-full">
+                                    <div className="flex items-center gap-3">
+                                      <div className="relative">
+                                        <div className="w-10 h-10 bg-secondary-100 rounded-lg flex items-center justify-center">
+                                          <Icon icon="lucide:package" width={20} className="text-secondary-600" />
+                                        </div>
+                                        <div className="absolute -top-1 -right-1">
+                                          <Checkbox
+                                            isSelected={product.checked || false}
+                                            onValueChange={(checked) => {
+                                              handleItemCheck(product.id, checked);
+                                            }}
+                                            size="sm"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <h4 className="text-md font-semibold">{product.name}</h4>
+                                        {productData && (
+                                          <p className="text-xs text-foreground-500">{productData.code}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <Chip
+                                      size="sm"
+                                      variant="flat"
+                                      color={product.exists ? "success" : "warning"}
+                                      startContent={
+                                        <Icon 
+                                          icon={product.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
+                                          width={14} 
+                                        />
+                                      }
+                                    >
+                                      {product.exists ? "Exists" : "Missing"}
+                                    </Chip>
+                                  </div>
+                                </CardHeader>
+                                {productData && productData.overview && (
+                                  <CardBody className="pt-0">
+                                    <p className="text-sm text-foreground-600 line-clamp-2">{productData.overview}</p>
+                                  </CardBody>
+                                )}
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      );
+                    })}
+
+                    {/* Ungrouped products with card layout */}
+                    {syncItemsGrouped.ungrouped.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Icon icon="lucide:alert-triangle" width={18} className="text-warning" />
+                          <h4 className="font-semibold text-lg text-warning">Ungrouped Products</h4>
+                          <Chip size="sm" variant="flat" color="warning">
+                            {syncItemsGrouped.ungrouped.length} product{syncItemsGrouped.ungrouped.length !== 1 ? 's' : ''}
+                          </Chip>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {syncItemsGrouped.ungrouped.map((product) => {
+                            const productData = products.find(p => p.id === product.id);
+
+                            return (
+                              <Card 
+                                key={product.id} 
+                                className={`hover:shadow-lg transition-all cursor-pointer border-2 ${
+                                  product.checked 
+                                    ? 'border-warning bg-warning/5' 
+                                    : 'border-transparent hover:border-warning/30'
+                                }`}
+                                isPressable
+                                onPress={() => handleItemCheck(product.id, !product.checked)}
+                              >
+                                <CardHeader className="pb-3">
+                                  <div className="flex justify-between items-start w-full">
+                                    <div className="flex items-center gap-3">
+                                      <div className="relative">
+                                        <div className="w-10 h-10 bg-warning-100 rounded-lg flex items-center justify-center">
+                                          <Icon icon="lucide:package" width={20} className="text-warning-600" />
+                                        </div>
+                                        <div className="absolute -top-1 -right-1">
+                                          <Checkbox
+                                            isSelected={product.checked || false}
+                                            onValueChange={(checked) => {
+                                              handleItemCheck(product.id, checked);
+                                            }}
+                                            size="sm"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <h4 className="text-md font-semibold">{product.name}</h4>
+                                        {productData && (
+                                          <p className="text-xs text-foreground-500">{productData.code}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <Chip
+                                      size="sm"
+                                      variant="flat"
+                                      color={product.exists ? "success" : "warning"}
+                                      startContent={
+                                        <Icon 
+                                          icon={product.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
+                                          width={14} 
+                                        />
+                                      }
+                                    >
+                                      {product.exists ? "Exists" : "Missing"}
+                                    </Chip>
+                                  </div>
+                                </CardHeader>
+                                {productData && productData.overview && (
+                                  <CardBody className="pt-0">
+                                    <p className="text-sm text-foreground-600 line-clamp-2">{productData.overview}</p>
+                                  </CardBody>
+                                )}
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Selected items summary */}
+                {(() => {
+                  const selectedCount = Object.values(syncItemsGrouped.grouped).reduce((count, rangeProducts) => {
+                    return count + rangeProducts.filter(p => p.checked).length;
+                  }, 0) + syncItemsGrouped.ungrouped.filter(p => p.checked).length;
+                  
+                  if (selectedCount === 0) return null;
+
+                  return (
+                    <div className="mt-4 bg-primary/10 rounded-lg p-3">
+                      <p className="text-sm text-primary font-medium">
+                        {selectedCount} product folder(s) will be created in Digital Ocean Spaces
+                      </p>
+                    </div>
+                  );
+                })()}
+              </CardBody>
+            </Card>
+          </div>
+        </Tab>
+      </Tabs>
 
       <Modal
         isDismissable={false}
@@ -731,6 +1368,54 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                   >
                     <OptionsManager options={productOptions} onOptionsChange={setProductOptions} />
                   </Tab>
+                  <Tab key="faqs" title="FAQs">
+                    <div className="space-y-4">
+                      <p className="text-sm text-default-500">
+                        Add frequently asked questions for this product. These will appear in the product details FAQ tab in the frontend.
+                      </p>
+
+                      {(formData.faqs || []).map((f, idx) => (
+                        <div key={idx} className="grid grid-cols-12 gap-2 items-start">
+                          <input
+                            className="col-span-12 urbana-input"
+                            placeholder={`Question ${idx + 1}`}
+                            value={f.question}
+                            onChange={(e) => {
+                              const newFaqs = [...(formData.faqs || [])];
+                              newFaqs[idx] = { ...newFaqs[idx], question: e.target.value };
+                              handleInputChange("faqs", newFaqs);
+                            }}
+                          />
+                          <textarea
+                            className="col-span-12 urbana-input"
+                            placeholder={`Answer ${idx + 1}`}
+                            rows={3}
+                            value={f.answer}
+                            onChange={(e) => {
+                              const newFaqs = [...(formData.faqs || [])];
+                              newFaqs[idx] = { ...newFaqs[idx], answer: e.target.value };
+                              handleInputChange("faqs", newFaqs);
+                            }}
+                          />
+                          <div className="col-span-12 flex justify-end">
+                            <Button variant="light" color="danger" onPress={() => {
+                              const newFaqs = [...(formData.faqs || [])];
+                              newFaqs.splice(idx, 1);
+                              handleInputChange("faqs", newFaqs);
+                            }}>
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div>
+                        <Button onPress={() => handleInputChange("faqs", [...(formData.faqs || []), { question: "", answer: "" }])}>
+                          Add FAQ
+                        </Button>
+                      </div>
+                    </div>
+                  </Tab>
                 </Tabs>
               </ModalBody>
               <ModalFooter>
@@ -759,8 +1444,8 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, onDelete, isSelected, onToggleSelect }) => {
   const { updateProduct } = useDataBuilderStore();
-  const hasImages = product.imageGallery.length > 0 && product.imageGallery[0];
-
+  const hasImages = product.imageGallery.length > 0 && product.imageGallery[0] && product.imageGallery[0].trim() !== "";
+  
   const handleToggleActive = () => {
     updateProduct(product.id, { active: typeof product.active === "undefined" ? false : !product.active });
   };
@@ -771,22 +1456,31 @@ const ProductCard: React.FC<ProductCardProps> = React.memo(({ product, onEdit, o
           <div className="flex items-center gap-3 flex-1">
             <Checkbox isSelected={isSelected} onValueChange={() => onToggleSelect(product.id)} size="sm" />
             {hasImages ? (
-              <Image src={product.imageGallery[0]} alt={product.name} width={40} height={40} className="rounded-lg object-cover" />
+              <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                <SecureImage 
+                  imagePath={product.imageGallery[0]} 
+                  productCode={product.code}
+                  alt={product.name} 
+                  className="w-full h-full object-cover"
+                />
+              </div>
             ) : (
               <div className="w-10 h-10 bg-success-100 rounded-lg flex items-center justify-center">
                 <Icon icon="lucide:package" width={20} className="text-success-600" />
               </div>
             )}
-            <div>
+            <div className="flex-1">
               <h4 className="text-lg font-semibold">{product.name}</h4>
-              {typeof product.active !== "undefined" && !product.active && (
-                <Chip size="sm" variant="flat" color="warning">
-                  Inactive
+              <div className="flex flex-wrap gap-1 mt-1">
+                {typeof product.active !== "undefined" && !product.active && (
+                  <Chip size="sm" variant="flat" color="warning">
+                    Inactive
+                  </Chip>
+                )}
+                <Chip size="sm" variant="flat" color="success">
+                  {product.code}
                 </Chip>
-              )}
-              <Chip size="sm" variant="flat" color="success">
-                {product.code}
-              </Chip>
+              </div>
             </div>
           </div>
           <Dropdown>

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useEffect } from "react";
 import { Card, CardBody } from "@heroui/react";
 import { StepperNavigation } from "./StepperNavigation";
 import { StepperProgress } from "./StepperProgress";
@@ -11,11 +11,21 @@ import { Step6ContactInfo } from "./steps/Step6ContactInfo";
 import { motion } from "framer-motion";
 import { useStepperStore } from "../stores/useStepperStore";
 
+// Explicitly defined the type for 'productDetails' in the relevant step data structure.
 export interface ProductData {
   stepperForm: {
     steps: Array<{
       step: number;
       title: string;
+      productDetails?: {
+        [key: string]: any;
+      }; // Explicitly defined 'productDetails' type
+      options?: Record<string, { value: string; imageUrl?: string }[]>;
+      productOptions?: Record<string, Record<string, { value: string; imageUrl?: string }[]>>;
+      dynamicUpdates?: {
+        updateImages: boolean;
+        updateFiles: boolean;
+      };
       [key: string]: any;
     }>;
   };
@@ -56,6 +66,14 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
 
     return filtered;
   }, [selections.individualProduct, selections.options, data.stepperForm.steps]);
+
+  // Debugging: log the relevant state so we can trace incorrect selections/options in QA
+  useEffect(() => {
+    console.log("[ProductStepper] currentStep:", currentStep);
+    console.log("[ProductStepper] selections:", selections);
+    console.log("[ProductStepper] stepData:", data.stepperForm.steps[currentStep - 1]);
+    console.log("[ProductStepper] validProductOptions:", validProductOptions);
+  }, [currentStep, selections, data.stepperForm.steps, validProductOptions]);
 
   const handleSubmit = useCallback(async () => {
     useStepperStore.getState().setSubmitting(true);
@@ -152,22 +170,24 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
           />
         );
       case 4:
+        // Added fallback and additional debug logs for `productId`.
+        const productId = selections.individualProduct || "unknown-product"; // Fallback value
+        console.log('Step 4 Data:', stepData?.productDetails);
+        console.log('Product ID:', productId);
         return (
           <Step4ProductContent
             data={{
               productDetails: stepData?.productDetails || {},
             }}
-            productId={selections.individualProduct!}
+            productId={productId} // Use fallback value
           />
         );
       case 5:
-        console.log(stepData, selections.options);
         return (
           <Step5ConfigureOptions
             data={{
               options: stepData?.options || {},
               productOptions: stepData?.productOptions || {},
-              productDetails: data.stepperForm.steps[3]?.productDetails || {},
               dynamicUpdates: stepData?.dynamicUpdates || { updateImages: false, updateFiles: false },
             }}
             options={selections.options || {}}

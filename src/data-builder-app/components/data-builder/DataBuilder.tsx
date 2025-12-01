@@ -7,7 +7,8 @@ import { ProductRangesManager } from "./ProductRangesManager";
 import { ProductsManager } from "./ProductsManager";
 import { RelationshipsManager } from "./RelationshipsManager";
 import { DataPreview } from "./DataPreview";
-import { GenerateFoldersModal } from "./GenerateFoldersModal";
+import { BiDirectionalSync } from "./BiDirectionalSync";
+
 import { FetchFromDigitalOceanModal } from "./FetchFromDigitalOceanModal";
 import { useDataBuilderStore } from "../../stores/useDataBuilderStore";
 
@@ -32,7 +33,7 @@ export const DataBuilder: React.FC = () => {
   } = useDataBuilderStore();
 
   const [currentStepperId, setCurrentStepperId] = useState<number | null>(null);
-  const { isOpen: isFoldersModalOpen, onOpen: onFoldersModalOpen, onOpenChange: onFoldersModalOpenChange } = useDisclosure();
+
   const { isOpen: isDigitalOceanModalOpen, onOpen: onDigitalOceanModalOpen, onOpenChange: onDigitalOceanModalOpenChange } = useDisclosure();
 
   // Initialize data from window on component mount
@@ -158,16 +159,7 @@ export const DataBuilder: React.FC = () => {
             </Button>
             <input type="file" accept=".json" className="hidden" onChange={handleImportData} />
           </label>
-          {/* Generate Folders Button */}
-          {/* <Button
-            color="secondary"
-            variant="flat"
-            onPress={onFoldersModalOpen}
-            startContent={<Icon icon="lucide:folder-plus" width={18} />}
-            isDisabled={products.length === 0}
-          >
-            Generate Folders
-          </Button> */}
+
 
           {/* Fetch from Digital Ocean Button */}
           <Button
@@ -279,6 +271,20 @@ export const DataBuilder: React.FC = () => {
           </Tab>
 
           <Tab
+            key="sync"
+            title={
+              <div className="flex items-center gap-2">
+                <Icon icon="lucide:refresh-cw" width={18} />
+                <span>Bi-Directional Sync</span>
+              </div>
+            }
+          >
+            <div className="p-6">
+              <BiDirectionalSync />
+            </div>
+          </Tab>
+
+          <Tab
             key="preview"
             title={
               <div className="flex items-center gap-2">
@@ -294,7 +300,7 @@ export const DataBuilder: React.FC = () => {
         </Tabs>
       </Card>
       {/* Generate Folders Modal */}
-      <GenerateFoldersModal isOpen={isFoldersModalOpen} onOpenChange={onFoldersModalOpenChange} />
+
       {/* Fetch from Digital Ocean Modal */}
       <FetchFromDigitalOceanModal isOpen={isDigitalOceanModalOpen} onOpenChange={onDigitalOceanModalOpenChange} />
     </div>

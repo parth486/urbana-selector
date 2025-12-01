@@ -7,6 +7,10 @@ class AdminInit {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'admin_init', array( $this, 'admin_init' ) );
+		
+		// Register AJAX actions for bi-directional sync
+		add_action( 'wp_ajax_urbana_list_all_folders', array( $this, 'ajax_list_all_folders' ) );
+		add_action( 'wp_ajax_urbana_sync_folders_to_do', array( $this, 'ajax_sync_folders_to_do' ) );
 	}
 
 	public function add_admin_menu() {
@@ -229,4 +233,89 @@ class AdminInit {
 	public function admin_init() {
 		// Register settings if needed
 	}
+
+	/**
+	 * AJAX handler for listing all folders from Digital Ocean
+	 */
+	public function ajax_list_all_folders() {
+		check_ajax_referer( 'wp_rest', '_wpnonce' );
+		
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		if ( ! $do_spaces->is_configured() ) {
+			wp_send_json_error( array( 'message' => 'Digital Ocean Spaces not configured' ), 400 );
+		}
+
+		try {
+			// Check if force_refresh parameter is sent
+			$force_refresh = isset( $_GET['force_refresh'] ) && $_GET['force_refresh'] === 'true';
+			$folders = $do_spaces->list_all_folder_names( $force_refresh );
+			wp_send_json_success( array(
+				'folders' => $folders,
+				'count' => count( $folders ),
+				'force_refresh' => $force_refresh,
+			) );
+		} catch ( \Exception $e ) {
+			wp_send_json_error( array( 'message' => $e->getMessage() ), 500 );
+		}
+	}
+
+	/**
+	 * AJAX handler for syncing folders to Digital Ocean
+	 */
+	public function ajax_sync_folders_to_do() {
+		check_ajax_referer( 'wp_rest', '_wpnonce' );
+		
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
+		}
+
+		$folders = isset( $_POST['folders'] ) ? json_decode( stripslashes( $_POST['folders'] ), true ) : array();
+		
+		if ( empty( $folders ) || ! is_array( $folders ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid folders parameter' ), 400 );
+		}
+
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		if ( ! $do_spaces->is_configured() ) {
+			wp_send_json_error( array( 'message' => 'Digital Ocean Spaces not configured' ), 400 );
+		}
+
+		$results = array();
+		$success_count = 0;
+		$failed_count = 0;
+
+		foreach ( $folders as $folder_path ) {
+			$result = $do_spaces->create_folder( $folder_path );
+			
+			if ( $result['success'] ) {
+				$success_count++;
+				$results[] = array(
+					'path' => $folder_path,
+					'success' => true,
+					'message' => 'Folder created successfully',
+				);
+			} else {
+				$failed_count++;
+				$results[] = array(
+					'path' => $folder_path,
+					'success' => false,
+					'message' => $result['message'] ?? 'Unknown error',
+				);
+			}
+		}
+
+		wp_send_json_success( array(
+			'results' => $results,
+			'summary' => array(
+				'total' => count( $folders ),
+				'success' => $success_count,
+				'failed' => $failed_count,
+			),
+		) );
+	}
 }
+

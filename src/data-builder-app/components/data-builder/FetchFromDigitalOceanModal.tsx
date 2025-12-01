@@ -231,9 +231,6 @@ export const FetchFromDigitalOceanModal: React.FC<FetchFromDigitalOceanModalProp
             relationships
           );
 
-          console.log(result.structured_data);
-          console.log("Updated Products:", updatedProducts);
-
           let updatedCount = 0;
           updatedProducts.forEach((product) => {
             const originalProduct = products.find((p) => p.code.toLowerCase() === product.code.toLowerCase());

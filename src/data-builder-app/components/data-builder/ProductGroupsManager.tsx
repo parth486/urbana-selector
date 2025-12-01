@@ -24,9 +24,12 @@ import {
   useDisclosure,
   Chip,
   Avatar,
+  Tabs,
+  Tab,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { useDataBuilderStore, ProductGroup } from "../../stores/useDataBuilderStore";
+import { DigitalOceanSyncPanel } from "./DigitalOceanSyncPanel";
 
 interface IconSelectorProps {
   selectedIcon: string;
@@ -157,10 +160,64 @@ export const ProductGroupsManager: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleRenameInDigitalOcean = async (oldName: string, newName: string) => {
+    const basePath = ''; // Get from settings if needed
+    const oldPath = basePath ? `${basePath}/${oldName}` : oldName;
+    const newPath = basePath ? `${basePath}/${newName}` : newName;
+
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/rename-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({
+          old_path: oldPath,
+          new_path: newPath,
+          type: 'group',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error('Failed to rename folder in Digital Ocean:', error);
+      return false;
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     if (editingGroup) {
+      // Check if name has changed
+      const nameChanged = editingGroup.name !== formData.name;
+      
+      if (nameChanged) {
+        // Ask user if they want to rename the Digital Ocean folder too
+        const shouldRename = confirm(
+          `You've renamed "${editingGroup.name}" to "${formData.name}".\n\n` +
+          `Do you also want to rename the folder in Digital Ocean Spaces?\n\n` +
+          `• Yes = Rename folder and move all files (recommended)\n` +
+          `• No = Only update WordPress, folder stays as "${editingGroup.name}"`
+        );
+
+        if (shouldRename) {
+          const renamed = await handleRenameInDigitalOcean(editingGroup.name, formData.name);
+          if (renamed) {
+            alert(`✓ Folder renamed successfully in Digital Ocean!`);
+          } else {
+            alert(`⚠️ Failed to rename folder in Digital Ocean. You may need to rename it manually.`);
+          }
+        }
+      }
+
       // Update existing group
       updateProductGroup(editingGroup.id, formData);
     } else {
@@ -169,6 +226,119 @@ export const ProductGroupsManager: React.FC = () => {
     }
 
     onClose();
+  };
+
+  // Digital Ocean Sync State
+  const [syncItems, setSyncItems] = React.useState<Array<{
+    id: string;
+    name: string;
+    type: 'group';
+    exists?: boolean;
+    checked?: boolean;
+  }>>([]);
+
+  // Function to check group folder existence
+  const checkGroupFolderExistence = React.useCallback(async () => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/check-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ type: 'groups' }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.success && result.results) {
+          // Update sync items with existence status (case-insensitive, ignore trailing slash)
+          setSyncItems(prev => 
+            prev.map(item => {
+              const existenceData = result.results.find((r: any) => {
+                // Normalize both to lower case and remove trailing slashes
+                const groupName = (item.name || item.id || '').toLowerCase().replace(/\/+$/, '');
+                const folderId = (r.id || '').toLowerCase().replace(/\/+$/, '');
+                return groupName === folderId;
+              });
+              return {
+                ...item,
+                exists: existenceData ? existenceData.exists : false
+              };
+            })
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check group folder existence:', error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    // Initialize sync items from product groups
+    setSyncItems(
+      productGroups.map(group => ({
+        id: group.id,
+        name: group.name,
+        type: 'group' as const,
+        exists: undefined, // undefined means 'checking'
+        checked: false,
+      }))
+    );
+
+    // Check folder existence after initializing
+    setTimeout(() => checkGroupFolderExistence(), 500);
+  }, [productGroups, checkGroupFolderExistence]);
+
+  const handleItemCheck = (id: string, checked: boolean) => {
+    setSyncItems(prev => 
+      prev.map(item => 
+        item.id === id ? { ...item, checked } : item
+      )
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSyncItems(prev => 
+      prev.map(item => ({ ...item, checked }))
+    );
+  };
+
+  const handleSync = async (selectedIds: string[]) => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/create-group-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ group_ids: selectedIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create folders');
+      }
+
+      // Update exists status for synced items
+      setSyncItems(prev => 
+        prev.map(item => 
+          selectedIds.includes(item.id) 
+            ? { ...item, exists: true, checked: false }
+            : item
+        )
+      );
+
+    } catch (error) {
+      throw error;
+    }
   };
 
   return (
@@ -183,7 +353,15 @@ export const ProductGroupsManager: React.FC = () => {
         </Button>
       </div>
 
-      {productGroups.length === 0 ? (
+      <Tabs aria-label="Product Groups Options" className="mb-6">
+        <Tab key="manage" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:layers" width={16} />
+            <span>Manage Groups</span>
+          </div>
+        }>
+          <div className="mt-4">
+            {productGroups.length === 0 ? (
         <Card>
           <CardBody className="text-center py-12">
             <div className="flex flex-col items-center gap-4">
@@ -266,8 +444,172 @@ export const ProductGroupsManager: React.FC = () => {
               </Card>
             );
           })}
-        </div>
-      )}
+            </div>
+          )}
+          </div>
+        </Tab>
+        
+        <Tab key="sync" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:cloud-upload" width={16} />
+            <span>Digital Ocean Sync</span>
+          </div>
+        }>
+          <div className="mt-4">
+            {/* Custom Product Groups Digital Ocean Sync with card layout matching Manage Groups */}
+            <Card className="urbana-card">
+              <CardHeader className="flex gap-3">
+                <Icon icon="lucide:cloud-upload" width={24} />
+                <div className="flex flex-col">
+                  <p className="text-md font-semibold">Product Groups - Digital Ocean Sync</p>
+                  <p className="text-small text-default-500">
+                    Organize like the Manage Groups tab with card layout
+                  </p>
+                </div>
+              </CardHeader>
+              <CardBody>
+                {/* Global controls */}
+                <div className="flex items-center justify-between mb-4">
+                  <Button
+                    color="primary" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(true)}
+                    startContent={<Icon icon="lucide:check-square" width={16} />}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    color="default" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(false)}
+                    startContent={<Icon icon="lucide:square" width={16} />}
+                  >
+                    Clear All
+                  </Button>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    onPress={() => {
+                      const selectedIds = syncItems.filter(item => item.checked).map(item => item.id);
+                      handleSync(selectedIds);
+                    }}
+                    isDisabled={!syncItems.some(item => item.checked)}
+                    startContent={<Icon icon="lucide:upload" width={16} />}
+                  >
+                    Sync Selected
+                  </Button>
+                </div>
+
+                {syncItems.length === 0 ? (
+                  <div className="text-center py-8 text-foreground-500">
+                    <Icon icon="lucide:folder-x" width={48} className="mx-auto mb-2 opacity-50" />
+                    <p>No groups available to sync</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {syncItems.map((syncItem) => {
+                      const group = productGroups.find(g => g.id === syncItem.id);
+                      const rangesCount = group ? getRangesForGroup(group.id).length : 0;
+
+                      return (
+                        <Card 
+                          key={syncItem.id} 
+                          className={`hover:shadow-lg transition-all cursor-pointer border-2 ${
+                            syncItem.checked 
+                              ? 'border-primary bg-primary/5' 
+                              : 'border-transparent hover:border-primary/30'
+                          }`}
+                          isPressable
+                          onPress={() => handleItemCheck(syncItem.id, !syncItem.checked)}
+                        >
+                          <CardHeader className="pb-3">
+                            <div className="flex justify-between items-start w-full">
+                              <div className="flex items-center gap-3">
+                                <div className="relative">
+                                  <Avatar 
+                                    icon={<Icon icon={group?.icon || "lucide:layers"} width={20} />} 
+                                    className="bg-primary-100 text-primary-800" 
+                                    size="sm" 
+                                  />
+                                  {/* Selection indicator */}
+                                  <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-white text-xs transition-all ${
+                                    syncItem.checked ? 'bg-primary' : 'bg-gray-300'
+                                  }`}>
+                                    {syncItem.checked ? (
+                                      <Icon icon="lucide:check" width={10} />
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <div>
+                                  <h4 className="text-lg font-semibold">{syncItem.name}</h4>
+                                  <div className="flex gap-2">
+                                    <Chip size="sm" variant="flat" color="primary">
+                                      {rangesCount} range{rangesCount !== 1 ? "s" : ""}
+                                    </Chip>
+                                    <Chip
+                                      size="sm"
+                                      variant="flat"
+                                      color={syncItem.exists === true ? "success" : syncItem.exists === false ? "warning" : "default"}
+                                      startContent={
+                                        syncItem.exists === undefined ? (
+                                          <Icon icon="lucide:loader-2" width={12} className="animate-spin" />
+                                        ) : syncItem.exists ? (
+                                          <Icon icon="lucide:check" width={12} />
+                                        ) : (
+                                          <Icon icon="lucide:cloud-upload" width={12} />
+                                        )
+                                      }
+                                    >
+                                      {syncItem.exists === undefined ? "Checking..." : syncItem.exists ? "Exists" : "Missing"}
+                                    </Chip>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardBody className="pt-0">
+                            <p className="text-sm text-foreground-600">
+                              {group?.description || "No description available"}
+                            </p>
+                            {syncItem.checked && (
+                              <div className="mt-2 p-2 bg-primary/10 rounded text-xs text-primary">
+                                ✓ Selected for sync
+                              </div>
+                            )}
+                          </CardBody>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Selected items summary */}
+                {syncItems.some(item => item.checked) && (
+                  <div className="mt-4 bg-primary/10 rounded-lg p-3">
+                    <p className="text-sm text-primary font-medium">
+                      {syncItems.filter(item => item.checked).length} group folder(s) will be created in Digital Ocean Spaces
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {syncItems.filter(item => item.checked).slice(0, 5).map((item) => (
+                        <Chip key={item.id} size="sm" variant="flat" color="primary">
+                          {item.name}
+                        </Chip>
+                      ))}
+                      {syncItems.filter(item => item.checked).length > 5 && (
+                        <Chip size="sm" variant="flat" color="default">
+                          +{syncItems.filter(item => item.checked).length - 5} more
+                        </Chip>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+        </Tab>
+      </Tabs>
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="lg" className="urbana-modal">
         <ModalContent>

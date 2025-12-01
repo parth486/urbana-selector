@@ -1,7 +1,8 @@
 import { useCallback } from "react";
-import { Tabs, Tab, Card, CardBody, Image, Accordion, AccordionItem, Button } from "@heroui/react";
+import { Tabs, Tab, Card, CardBody, Accordion, AccordionItem, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
+import SecureImage from "../SecureImage";
 
 interface Step4Props {
   data: {
@@ -17,6 +18,7 @@ interface ProductDetail {
   specifications: string[];
   imageGallery: string[];
   files: Record<string, string>;
+  faqs?: Array<{ question: string; answer: string }>;
 }
 
 export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) => {
@@ -31,11 +33,36 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
       let downloadUrl = fileUrl;
 
       if (isDigitalOceanUrl) {
-        // Use WordPress proxy endpoint for Digital Ocean files
-        const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
-        proxyUrl.searchParams.set("url", fileUrl);
-        downloadUrl = proxyUrl.toString();
-      }
+        // Prefer fetching by object path rather than passing a presigned URL
+        // Convert the absolute DO URL into the object key (no leading slash)
+        try {
+          const parsed = new URL(fileUrl);
+          let objectKey = (parsed.pathname || "").replace(/^\//, "");
+
+          // If there is an objectKey, request proxy by path so backend can use server credentials
+          if (objectKey) {
+            const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
+            proxyUrl.searchParams.set("path", objectKey);
+            downloadUrl = proxyUrl.toString();
+          } else {
+            // Fallback to using the full URL
+            const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
+            proxyUrl.searchParams.set("url", fileUrl);
+            downloadUrl = proxyUrl.toString();
+          }
+        } catch (err) {
+          // If URL parsing fails for any reason, fallback to passing the full url
+          const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
+          proxyUrl.searchParams.set("url", fileUrl);
+          downloadUrl = proxyUrl.toString();
+        }
+      } else if (!/^https?:\/\//i.test(fileUrl)) {
+          // If fileUrl is not an absolute URL (likely a path / filename stored in product data),
+          // request the proxy to fetch by object path (backend will map to DigitalOcean Spaces)
+          const proxyUrl = new URL("/wp-json/urbana/v1/proxy-download", window.location.origin);
+          proxyUrl.searchParams.set("path", fileUrl);
+          downloadUrl = proxyUrl.toString();
+        }
 
       // Create a temporary anchor element and trigger download
       const link = document.createElement("a");
@@ -81,12 +108,18 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
       {/* Product header */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="w-full md:w-1/2">
-          <Image
-            removeWrapper
-            alt={productDetails.name}
-            className="w-full h-64 object-cover rounded-medium"
-            src={featuredImage ? featuredImage : `https://img.heroui.chat/image/${getImageCategory(productId)}`}
-          />
+          {featuredImage ? (
+            <SecureImage
+              imagePath={featuredImage}
+              productCode={productId}
+              alt={productDetails.name}
+              className="w-full h-64 object-cover rounded-medium"
+            />
+          ) : (
+            <div className="w-full h-64 bg-gray-100 rounded-medium flex items-center justify-center">
+              <Icon icon="lucide:image" width={48} className="text-gray-400" />
+            </div>
+          )}
         </div>
 
         <div className="w-full md:w-1/2">
@@ -138,11 +171,11 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {productDetails.imageGallery.map((image, index) => (
                   <div key={index} className="aspect-square">
-                    <Image
-                      removeWrapper
+                    <SecureImage
+                      imagePath={image}
+                      productCode={productId}
                       alt={`${productDetails.name} - Image ${index + 1}`}
                       className="w-full h-full object-cover rounded-medium"
-                      src={`${image}`}
                     />
                   </div>
                 ))}
@@ -193,24 +226,43 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
         <Tab key="faq" title="FAQ">
           <Card>
             <CardBody className="p-6">
-              <Accordion>
-                <AccordionItem key="1" title="What is the installation process?">
-                  Installation typically requires a concrete foundation and can be completed by our certified installers. The process
-                  usually takes 1-3 days depending on the product complexity and site conditions.
-                </AccordionItem>
-                <AccordionItem key="2" title="What maintenance is required?">
-                  Our products are designed for minimal maintenance. We recommend a visual inspection every 6 months and cleaning as needed.
-                  Specific maintenance schedules are provided in the product documentation.
-                </AccordionItem>
-                <AccordionItem key="3" title="Are customizations available?">
-                  Yes, most products can be customized with different colors, materials, and additional features. Custom options can be
-                  selected in the next step of this configuration process.
-                </AccordionItem>
-                <AccordionItem key="4" title="What warranty is provided?">
-                  Standard warranty is 10 years on structural components and 5 years on other elements. Extended warranties are available
-                  for purchase. All warranties cover manufacturing defects and normal wear.
-                </AccordionItem>
-              </Accordion>
+                      <Accordion>
+                        {
+                          // If this product has its own FAQ array, render those. Otherwise fall back to the default hard-coded entries.
+                          (productDetails.faqs && productDetails.faqs.length > 0
+                            ? productDetails.faqs.map((f, i) => (
+                                <AccordionItem key={i} title={f.question}>
+                                  {f.answer}
+                                </AccordionItem>
+                              ))
+                            : [
+                                {
+                                  q: "What is the installation process?",
+                                  a:
+                                    "Installation typically requires a concrete foundation and can be completed by our certified installers. The process usually takes 1-3 days depending on the product complexity and site conditions.",
+                                },
+                                {
+                                  q: "What maintenance is required?",
+                                  a:
+                                    "Our products are designed for minimal maintenance. We recommend a visual inspection every 6 months and cleaning as needed. Specific maintenance schedules are provided in the product documentation.",
+                                },
+                                {
+                                  q: "Are customizations available?",
+                                  a:
+                                    "Yes, most products can be customized with different colors, materials, and additional features. Custom options can be selected in the next step of this configuration process.",
+                                },
+                                {
+                                  q: "What warranty is provided?",
+                                  a:
+                                    "Standard warranty is 10 years on structural components and 5 years on other elements. Extended warranties are available for purchase. All warranties cover manufacturing defects and normal wear.",
+                                },
+                              ].map((item, i) => (
+                                <AccordionItem key={`fallback-${i}`} title={item.q}>
+                                  {item.a}
+                                </AccordionItem>
+                              )))
+                        }
+                      </Accordion>
             </CardBody>
           </Card>
         </Tab>
@@ -288,8 +340,20 @@ function getFileSize(filename: string): string {
 function getFileNameFromUrl(url: string, displayName: string): string {
   // Try to extract filename from URL
   try {
-    const urlParts = url.split("/");
-    const filename = urlParts[urlParts.length - 1];
+    let filename = "";
+
+    // Prefer using the URL API so we ignore query strings / fragments
+    try {
+      const parsed = new URL(url);
+      filename = (parsed.pathname || "").split("/").pop() || "";
+    } catch (err) {
+      // Not a full absolute URL, fallback to a simple split
+      const urlParts = url.split("/");
+      filename = urlParts[urlParts.length - 1] || "";
+    }
+
+    // Strip any query string or fragment that may still be present
+    filename = filename.split("?")[0].split("#")[0];
 
     // If we got a valid filename with extension, use it
     if (filename && filename.includes(".")) {
@@ -300,7 +364,8 @@ function getFileNameFromUrl(url: string, displayName: string): string {
   }
 
   // Fallback: use display name and try to add extension from URL
-  const extension = url.split(".").pop()?.toLowerCase();
+  // Try to extract extension from the URL but ignore query strings/fragments
+  const extension = (url.split(".").pop() || "").toLowerCase().split("?")[0].split("#")[0];
   if (extension && !displayName.includes(".")) {
     return `${displayName}.${extension}`;
   }

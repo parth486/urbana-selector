@@ -10,6 +10,7 @@ interface SettingsData {
     region: string;
     access_key: string;
     secret_key: string;
+    cdn_endpoint?: string;
     configured: boolean;
   };
   general: {
@@ -28,6 +29,7 @@ export const SettingsManager: React.FC = () => {
       region: "nyc3",
       access_key: "",
       secret_key: "",
+      cdn_endpoint: "",
       configured: false,
     },
     general: {

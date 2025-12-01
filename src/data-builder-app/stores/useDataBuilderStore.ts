@@ -18,6 +18,7 @@ export interface ProductRange {
   description: string;
   tags: string[];
   active: boolean;
+  groupName: string; // NEW: parent group name for backend
 }
 
 export interface Product {
@@ -30,6 +31,7 @@ export interface Product {
   imageGallery: string[];
   files: Record<string, string>;
   options?: Record<string, Array<{ value: string; imageUrl?: string }>>; // Optional product-specific options
+  faqs?: Array<{ question: string; answer: string }>;
   active: boolean;
 }
 
@@ -40,6 +42,7 @@ export interface ProductContent {
   specifications: string[];
   imageGallery: string[];
   files: Record<string, string>;
+  faqs?: Array<{ question: string; answer: string }>;
 }
 
 export interface Relationships {
@@ -323,7 +326,6 @@ export const useDataBuilderStore = create<DataBuilderState>()(
 
         // Always set the stepper form data structure first
         if (windowData.stepperFormData) {
-          console.log("Loading stepper form data:", windowData.stepperFormData);
           set((draft) => {
             draft.productData = windowData.stepperFormData;
           });
@@ -336,8 +338,6 @@ export const useDataBuilderStore = create<DataBuilderState>()(
           windowData.stepperDataBuilder.productGroups &&
           windowData.stepperDataBuilder.productGroups.length > 0
         ) {
-          console.log("Loading existing data builder data:", windowData.stepperDataBuilder);
-
           // Use the existing data builder information - DON'T extract from stepper form
           set((draft) => {
             draft.productGroups = windowData.stepperDataBuilder.productGroups || [];
@@ -551,6 +551,7 @@ export const useDataBuilderStore = create<DataBuilderState>()(
                 image: "",
                 description: getDescriptionForRange(name),
                 tags: getTagsForRange(name),
+                groupName: groupName, // MIGRATION: set groupName for all ranges
               });
             });
           });
@@ -663,6 +664,8 @@ export const useDataBuilderStore = create<DataBuilderState>()(
                       specifications: product.specifications,
                       imageGallery: product.imageGallery,
                       files: product.files,
+                      // include faqs so they are exported into stepper_form_data
+                      faqs: product.faqs || [],
                     };
                   });
                   return detailsObj;
@@ -781,6 +784,7 @@ export const useDataBuilderStore = create<DataBuilderState>()(
             description: range.description || getDescriptionForRange(range.name),
             tags: range.tags || getTagsForRange(range.name),
             active: range.active !== undefined ? range.active : true,
+            groupName: range.groupName || '',
           };
 
           // Check if range already exists
@@ -797,6 +801,10 @@ export const useDataBuilderStore = create<DataBuilderState>()(
           const index = draft.productRanges.findIndex((r) => r.id === id);
           if (index !== -1) {
             draft.productRanges[index] = { ...draft.productRanges[index], ...updates };
+            // If groupName is updated, update it here
+            if (updates.groupName) {
+              draft.productRanges[index].groupName = updates.groupName;
+            }
             draft.isDirty = true;
           }
         }),

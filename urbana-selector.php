@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Urbana Selector
  * Description: A WordPress plugin for product configurator with React + Tailwind interface.
- * Version: 1.0.1
+ * Version: 1.0.1.1
  * Author: Urbana
  * License: GPL v2 or later
  * Text Domain: urbana-selector
@@ -61,15 +61,22 @@ class UrbanaSelector {
 
 		// Initialize REST API
 		new Urbana\API\RestAPI();
+		new Urbana\API\RenameEndpoints();
 
 		// Initialize database
 		new Urbana\Database\DatabaseManager();
+
+		// Initialize reverse sync manager
+		new Urbana\Utils\ReverseSyncManager();
 	}
 
 	public function activate() {
 		// Create database tables
 		$db_manager = new Urbana\Database\DatabaseManager();
 		$db_manager->create_tables();
+
+		// Initialize default settings on first activation
+		$this->initialize_default_settings();
 
 		// Flush rewrite rules
 		flush_rewrite_rules();
@@ -79,7 +86,57 @@ class UrbanaSelector {
 		// Clean up if needed
 		flush_rewrite_rules();
 	}
+
+	/**
+	 * Initialize default settings on plugin activation
+	 */
+	private function initialize_default_settings() {
+		// Only set defaults if not already set
+		if ( get_option( 'urbana_do_reverse_sync_base_path' ) === false ) {
+			// Set base_path to empty string (root level) by default
+			add_option( 'urbana_do_reverse_sync_base_path', '', '', 'no' );
+			error_log( 'Urbana: Initialized base_path to empty string (root level)' );
+		}
+		
+		// Set other reverse sync defaults if not already set
+		if ( get_option( 'urbana_do_reverse_sync_enabled' ) === false ) {
+			add_option( 'urbana_do_reverse_sync_enabled', false, '', 'no' );
+		}
+		
+		if ( get_option( 'urbana_do_auto_create_group_folders' ) === false ) {
+			add_option( 'urbana_do_auto_create_group_folders', true, '', 'no' );
+		}
+		
+		if ( get_option( 'urbana_do_auto_create_range_folders' ) === false ) {
+			add_option( 'urbana_do_auto_create_range_folders', true, '', 'no' );
+		}
+		
+		if ( get_option( 'urbana_do_auto_create_product_folders' ) === false ) {
+			add_option( 'urbana_do_auto_create_product_folders', true, '', 'no' );
+		}
+		
+		// Fix any incorrect base_path values from old versions
+		$this->fix_base_path_setting();
+	}
+
+	/**
+	 * Fix base_path setting if it contains unwanted default value
+	 */
+	private function fix_base_path_setting() {
+		$current_base_path = get_option( 'urbana_do_reverse_sync_base_path', null );
+		
+		// If base_path is set to "assets/products" or "assets", clear it
+		if ( $current_base_path === 'assets/products' || $current_base_path === 'assets' ) {
+			update_option( 'urbana_do_reverse_sync_base_path', '' );
+			error_log( 'Urbana: Auto-fixed base_path setting from "' . $current_base_path . '" to empty string' );
+		}
+	}
 }
 
 // Initialize the plugin
 new UrbanaSelector();
+
+// Load base path fix admin page
+if ( is_admin() && file_exists( URBANA_PLUGIN_PATH . 'fix-base-path-admin.php' ) ) {
+	require_once URBANA_PLUGIN_PATH . 'fix-base-path-admin.php';
+}

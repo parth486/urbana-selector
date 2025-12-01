@@ -128,12 +128,12 @@ export class AssetGenerator {
   }
 
   private static sanitizePathSegment(segment: string): string {
-    return segment
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "") // Remove special characters except spaces and hyphens
-      .replace(/\s+/g, "-") // Replace spaces with hyphens
-      .replace(/-+/g, "-") // Replace multiple hyphens with single hyphen
-      .trim();
+    // Replace special characters with spaces (keeping alphanumeric, spaces, hyphens, underscores)
+    let cleaned = segment.replace(/[^a-zA-Z0-9\s\-_]/g, ' ');
+    // Replace multiple spaces with single space
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    // Convert to lowercase for case-insensitive handling
+    return cleaned.toLowerCase().trim();
   }
 
   static async generateFoldersAPI(structures: AssetStructure[]): Promise<GenerationResult> {

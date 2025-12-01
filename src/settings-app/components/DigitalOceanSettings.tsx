@@ -17,12 +17,22 @@ import {
 import { Icon } from "@iconify/react";
 import { FetchFromDigitalOceanModal } from "./FetchFromDigitalOceanModal";
 
+interface ReverseSyncSettings {
+  enabled: boolean;
+  auto_create_group_folders: boolean;
+  auto_create_range_folders: boolean;
+  auto_create_product_folders: boolean;
+  base_path: string;
+}
+
 interface DigitalOceanSettingsData {
   bucket_name: string;
   region: string;
   access_key: string;
   secret_key: string;
+  cdn_endpoint?: string;
   configured: boolean;
+  reverse_sync?: ReverseSyncSettings;
 }
 
 interface DigitalOceanSettingsProps {
@@ -52,6 +62,8 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
     success: boolean;
     message: string;
   } | null>(null);
+  const [isTestingSync, setIsTestingSync] = useState(false);
+  const [syncTestResult, setSyncTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const { isOpen: isFetchModalOpen, onOpen: onFetchModalOpen, onOpenChange: onFetchModalOpenChange } = useDisclosure();
 
   const handleInputChange = useCallback(
@@ -59,6 +71,26 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
       onChange({ [field]: value });
     },
     [onChange]
+  );
+
+  const handleReverseSyncChange = useCallback(
+    (field: keyof ReverseSyncSettings, value: string | boolean) => {
+      const currentReversSync = settings.reverse_sync || {
+        enabled: false,
+        auto_create_group_folders: true,
+        auto_create_range_folders: true,
+        auto_create_product_folders: true,
+        base_path: ""
+      };
+      
+      onChange({ 
+        reverse_sync: {
+          ...currentReversSync,
+          [field]: value
+        }
+      });
+    },
+    [onChange, settings.reverse_sync]
   );
 
   const handleTestConnection = useCallback(async () => {
@@ -92,6 +124,49 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
       setIsTesting(false);
     }
   }, []);
+
+  const handleTestSync = useCallback(async () => {
+    setIsTestingSync(true);
+    setSyncTestResult(null);
+
+    try {
+      // Test creating a sample group folder using a test group ID
+      const response = await fetch("/wp-json/urbana/v1/digital-ocean/create-group-folders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+        body: JSON.stringify({
+          group_ids: ["test-sync-folder"],
+          base_path: settings.reverse_sync?.base_path || ""
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setSyncTestResult({
+          success: result.success,
+          message: result.success ? "Test sync completed successfully!" : result.message,
+          details: result
+        });
+      } else {
+        const error = await response.json();
+        setSyncTestResult({
+          success: false,
+          message: error.message || "Test sync failed",
+          details: error
+        });
+      }
+    } catch (error) {
+      setSyncTestResult({
+        success: false,
+        message: "Failed to test sync. Please check your configuration and connection.",
+      });
+    } finally {
+      setIsTestingSync(false);
+    }
+  }, [settings.reverse_sync?.base_path]);
 
   return (
     <div className="space-y-6">
@@ -174,6 +249,16 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
               onValueChange={(value) => handleInputChange("secret_key", value)}
               startContent={<Icon icon="lucide:eye-off" width={16} />}
               isRequired
+              classNames={{ input: "urbana-input" }}
+            />
+
+            <Input
+              label="CDN Endpoint (Optional)"
+              placeholder="https://your-cdn-endpoint.com"
+              value={settings.cdn_endpoint || ""}
+              onValueChange={(value) => handleInputChange("cdn_endpoint", value)}
+              startContent={<Icon icon="lucide:globe" width={16} />}
+              description="Use your CDN URL if configured, or leave empty to use direct bucket URLs"
               classNames={{ input: "urbana-input" }}
             />
 
@@ -289,6 +374,191 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
       {/* Fetch from Digital Ocean Modal */}
       <FetchFromDigitalOceanModal isOpen={isFetchModalOpen} onOpenChange={onFetchModalOpenChange} />
 
+      {/* Sync Test Result */}
+      {syncTestResult && (
+        <Card className={`border ${syncTestResult.success ? "border-success" : "border-danger"}`}>
+          <CardBody>
+            <div className="flex items-center gap-3">
+              <Icon
+                icon={syncTestResult.success ? "lucide:check-circle" : "lucide:x-circle"}
+                width={20}
+                className={syncTestResult.success ? "text-success" : "text-danger"}
+              />
+              <div>
+                <p className="font-medium">{syncTestResult.success ? "Sync Test Successful" : "Sync Test Failed"}</p>
+                <p className="text-sm text-foreground-500">{syncTestResult.message}</p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Reverse Sync Settings */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center w-full">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Icon icon="lucide:refresh-cw" width={16} />
+              Reverse Sync Settings
+            </h3>
+            <Chip
+              size="sm"
+              variant="flat"
+              color={settings.reverse_sync?.enabled ? "success" : "default"}
+              startContent={<Icon icon={settings.reverse_sync?.enabled ? "lucide:check" : "lucide:x"} width={12} />}
+            >
+              {settings.reverse_sync?.enabled ? "Enabled" : "Disabled"}
+            </Chip>
+          </div>
+        </CardHeader>
+        <CardBody className="space-y-4">
+          <div className="text-sm text-foreground-600 mb-4">
+            <p>Automatically create Digital Ocean folder structure when groups, ranges, or products are added via admin.</p>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-default/20 rounded-medium">
+              <div className="flex items-center gap-3">
+                <Icon icon="lucide:toggle-left" width={20} />
+                <div>
+                  <p className="font-medium">Enable Reverse Sync</p>
+                  <p className="text-xs text-foreground-500">Master toggle for automatic folder creation</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={settings.reverse_sync?.enabled || false}
+                  onChange={(e) => handleReverseSyncChange("enabled", e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {settings.reverse_sync?.enabled && (
+              <>
+                <Divider />
+                
+                <div className="space-y-2">
+                  <Input
+                    label="Base Path"
+                    placeholder="Leave empty for root level"
+                    value={settings.reverse_sync?.base_path || ""}
+                    onValueChange={(value) => handleReverseSyncChange("base_path", value)}
+                    startContent={<Icon icon="lucide:folder" width={16} />}
+                    description={
+                      settings.reverse_sync?.base_path 
+                        ? `Folders will be created under: ${settings.reverse_sync.base_path}/`
+                        : "Folders will be created at root level (recommended)"
+                    }
+                    classNames={{ input: "urbana-input" }}
+                  />
+                  
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <Icon icon="lucide:info" width={16} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-blue-700 dark:text-blue-300">
+                        <p className="font-medium mb-1">Base Path Configuration:</p>
+                        <ul className="list-disc list-inside space-y-1 ml-1">
+                          <li><strong>Empty (recommended):</strong> Creates <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">Shelter/Peninsula/</code></li>
+                          <li><strong>"assets/products":</strong> Creates <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">assets/products/Shelter/Peninsula/</code></li>
+                        </ul>
+                        <p className="mt-2">
+                          If your Digital Ocean already has folders at root level (like "Shelter", "toilet"), leave this empty.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Divider />
+
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">Auto-Create Folders For:</h4>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-2 rounded-small hover:bg-default/10">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="lucide:layers" width={16} />
+                        <span className="text-sm">Product Groups</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.reverse_sync?.auto_create_group_folders !== false}
+                          onChange={(e) => handleReverseSyncChange("auto_create_group_folders", e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-small hover:bg-default/10">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="lucide:grid-3x3" width={16} />
+                        <span className="text-sm">Product Ranges</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.reverse_sync?.auto_create_range_folders !== false}
+                          onChange={(e) => handleReverseSyncChange("auto_create_range_folders", e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-small hover:bg-default/10">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="lucide:package" width={16} />
+                        <span className="text-sm">Individual Products</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.reverse_sync?.auto_create_product_folders !== false}
+                          onChange={(e) => handleReverseSyncChange("auto_create_product_folders", e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <Divider />
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="secondary"
+                    startContent={<Icon icon="lucide:eye" width={14} />}
+                    onPress={() => {/* TODO: Add sync logs modal */}}
+                  >
+                    View Sync Logs
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="primary"
+                    startContent={!isTestingSync ? <Icon icon="lucide:play" width={14} /> : undefined}
+                    onPress={handleTestSync}
+                    isLoading={isTestingSync}
+                    isDisabled={!settings.configured || !settings.reverse_sync?.enabled}
+                  >
+                    {isTestingSync ? "Testing..." : "Test Sync"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </CardBody>
+      </Card>
+
       {/* Usage Information */}
       <Card>
         <CardHeader>
@@ -337,6 +607,126 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
             <p>• Range folders (e.g., peninsula, bench, decorative)</p>
             <p>• Product code folders (e.g., k302, b100)</p>
             <p>• Asset type folders: images/ and downloads/</p>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Renaming Guide */}
+      <Card className="border-2 border-warning-200 dark:border-warning-800">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:alert-circle" width={20} className="text-warning-600" />
+            <h3 className="font-semibold text-warning-800 dark:text-warning-400">
+              Important: Renaming Groups, Ranges, or Products
+            </h3>
+          </div>
+        </CardHeader>
+        <CardBody className="space-y-4">
+          {/* Renaming in WordPress */}
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Icon icon="lucide:edit" width={20} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
+                  Renaming in WordPress Admin (Recommended)
+                </h4>
+                <div className="text-sm text-blue-700 dark:text-blue-300 space-y-2">
+                  <p>When you rename a Product Group, Range, or Product in the admin:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Edit the item and change the name</li>
+                    <li>Click Save</li>
+                    <li><strong>Popup will ask:</strong> "Do you want to rename the Digital Ocean folder?"</li>
+                    <li><strong>Click OK:</strong> Folder and all files are automatically renamed in Digital Ocean ✓</li>
+                    <li><strong>Click Cancel:</strong> Only WordPress is updated, folder keeps old name</li>
+                  </ol>
+                  <div className="bg-blue-100 dark:bg-blue-900 rounded p-2 mt-2">
+                    <p className="font-medium">💡 Best Practice:</p>
+                    <p>Always rename in WordPress first and let the plugin handle Digital Ocean automatically!</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Renaming in Digital Ocean */}
+          <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Icon icon="lucide:cloud" width={20} className="text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-orange-800 dark:text-orange-300 mb-2">
+                  If Folder Name is Changed in Digital Ocean
+                </h4>
+                <div className="text-sm text-orange-700 dark:text-orange-300 space-y-2">
+                  <p className="font-medium">⚠️ Short answer: Nothing happens automatically - WordPress won't know about it.</p>
+                  
+                  <div className="bg-orange-100 dark:bg-orange-900 rounded p-3 mt-2">
+                    <p className="font-medium mb-1">Example Scenario:</p>
+                    <p>You rename <code className="bg-orange-200 dark:bg-orange-800 px-1 rounded">Shelter/Peninsula/</code> → <code className="bg-orange-200 dark:bg-orange-800 px-1 rounded">Shelter/Peninsula-V2/</code> in Digital Ocean</p>
+                  </div>
+
+                  <div className="space-y-2 mt-2">
+                    <p className="font-medium">What happens:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>WordPress database still has: Product Range name = "Peninsula"</li>
+                      <li>Digital Ocean now has: Folder = "Shelter/Peninsula-V2/"</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2 mt-2">
+                    <p className="font-medium">Plugin behavior:</p>
+                    <ul className="space-y-1 ml-2">
+                      <li className="flex items-start gap-2">
+                        <Icon icon="lucide:x" width={14} className="text-danger mt-0.5" />
+                        <span>"Check Folders" will show "Peninsula" as <strong>"Missing"</strong></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Icon icon="lucide:x" width={14} className="text-danger mt-0.5" />
+                        <span>Frontend image URLs will break (looking for old path)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Icon icon="lucide:alert-triangle" width={14} className="text-warning-600 mt-0.5" />
+                        <span>If you click "Sync" → Creates a NEW folder "Shelter/Peninsula/"</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Icon icon="lucide:alert-triangle" width={14} className="text-warning-600 mt-0.5" />
+                        <span><strong>Result:</strong> Two folders (Peninsula and Peninsula-V2)</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-orange-100 dark:bg-orange-900 rounded p-3 mt-3">
+                    <p className="font-medium mb-2">✓ What You Need to Do:</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                      <li>Rename folder in Digital Ocean</li>
+                      <li><strong>Also</strong> rename the Product Range in WordPress admin to match</li>
+                      <li>Or manually update image URLs</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* General Tips */}
+          <div className="bg-default/40 rounded-lg p-4">
+            <h4 className="font-semibold text-foreground-700 mb-2 flex items-center gap-2">
+              <Icon icon="lucide:lightbulb" width={16} />
+              General Tips
+            </h4>
+            <ul className="text-sm text-foreground-600 space-y-2 ml-6">
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Case Sensitivity:</strong> Digital Ocean is case-sensitive. "Shelter" and "shelter" are different folders!</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Always Check:</strong> After renaming, use "Check Folders" to verify everything is in sync</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-primary font-bold">•</span>
+                <span><strong>Backup First:</strong> Before bulk renaming, download important files as backup</span>
+              </li>
+            </ul>
           </div>
         </CardBody>
       </Card>

@@ -12,7 +12,6 @@ export default function App() {
     const windowData = (window as any).urbanaAdmin;
 
     if (windowData && productGroups.length === 0) {
-      console.log("App initializing from window data");
       initializeFromWindowData();
     }
   }, [initializeFromWindowData, productGroups.length]);

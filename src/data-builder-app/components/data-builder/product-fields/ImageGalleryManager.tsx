@@ -5,7 +5,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Image,
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
   Divider,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
+import SecureImage from "../SecureImage";
 
 interface ImageGalleryManagerProps {
   imageGallery: string[];
@@ -153,15 +153,11 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
               <div key={index} className="relative group">
                 <div className="aspect-square rounded-lg overflow-hidden border-2 border-default-200">
                   {url ? (
-                    <Image
-                      src={url}
+                    <SecureImage
+                      imagePath={url}
+                      productCode={productCode || 'unknown'}
                       alt={`Gallery image ${index + 1}`}
                       className="w-full h-full object-cover"
-                      fallback={
-                        <div className="w-full h-full bg-default-100 flex items-center justify-center">
-                          <Icon icon="lucide:image" width={32} className="text-default-400" />
-                        </div>
-                      }
                     />
                   ) : (
                     <div className="w-full h-full bg-default-100 flex items-center justify-center">

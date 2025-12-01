@@ -20,6 +20,9 @@ import {
   Image,
   Select,
   SelectItem,
+  Tabs,
+  Tab,
+  Checkbox,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { useDataBuilderStore, ProductRange } from "../../stores/useDataBuilderStore";
@@ -90,6 +93,7 @@ export const ProductRangesManager: React.FC = () => {
     description: "",
     tags: [],
     active: true,
+    groupName: "",
   });
   const [selectedGroups, setSelectedGroups] = React.useState<Set<string>>(new Set());
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -102,6 +106,7 @@ export const ProductRangesManager: React.FC = () => {
       description: "",
       tags: [],
       active: true,
+      groupName: "",
     });
     setSelectedGroups(new Set());
     setErrors({});
@@ -116,6 +121,7 @@ export const ProductRangesManager: React.FC = () => {
       description: range.description,
       tags: [...range.tags],
       active: range.active,
+      groupName: range.groupName || "",
     });
 
     // Find which groups this range belongs to
@@ -180,14 +186,73 @@ export const ProductRangesManager: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleRenameInDigitalOcean = async (oldName: string, newName: string, groupName: string) => {
+    try {
+      const oldPath = `${groupName}/${oldName}`;
+      const newPath = `${groupName}/${newName}`;
+      
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/rename-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ 
+          old_path: oldPath,
+          new_path: newPath
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to rename folder');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to rename folder in Digital Ocean:', error);
+      throw error;
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     let rangeId: string;
+    let needsRename = false;
+    let oldGroupName: string | null = null;
+    let oldRangeName: string | null = null;
+
+    // Always use the first selected group as the main groupName for backend
+    const groupName = productGroups.find(g => g.id === Array.from(selectedGroups)[0])?.name || "";
+    const formDataWithGroup = { ...formData, groupName };
 
     if (editingRange) {
+      // Check if name has changed
+      needsRename = editingRange.name !== formData.name;
+      oldRangeName = editingRange.name;
+      
+      // Get old group name for rename path
+      if (needsRename) {
+        const oldGroupId = Object.entries(relationships.groupToRanges).find(([_, rangeIds]) => 
+          rangeIds.includes(editingRange.id)
+        )?.[0];
+        
+        if (oldGroupId) {
+          const oldGroup = productGroups.find(g => g.id === oldGroupId);
+          if (oldGroup) {
+            oldGroupName = oldGroup.name;
+          }
+        }
+      }
+
       // Update existing range
-      updateProductRange(editingRange.id, formData);
+      updateProductRange(editingRange.id, formDataWithGroup);
       rangeId = editingRange.id;
 
       // Update group relationships - remove from all groups first
@@ -196,7 +261,7 @@ export const ProductRangesManager: React.FC = () => {
       });
     } else {
       // Add new range
-      addProductRange(formData);
+      addProductRange(formDataWithGroup);
       // Generate the same ID that the store will use
       rangeId = formData.name
         .toLowerCase()
@@ -208,6 +273,27 @@ export const ProductRangesManager: React.FC = () => {
     selectedGroups.forEach((groupId) => {
       linkRangeToGroup(groupId, rangeId);
     });
+
+    // Handle Digital Ocean rename if needed
+    if (needsRename && oldRangeName && oldGroupName) {
+      const shouldRename = confirm(
+        `The range name has changed from "${oldRangeName}" to "${formData.name}".\n\n` +
+        `Do you want to rename the folder in Digital Ocean as well?\n` +
+        `This will move all contents from:\n` +
+        `  ${oldGroupName}/${oldRangeName}/\n` +
+        `to:\n` +
+        `  ${oldGroupName}/${formData.name}/`
+      );
+
+      if (shouldRename) {
+        try {
+          await handleRenameInDigitalOcean(oldRangeName, formData.name, oldGroupName);
+          alert(`✅ Successfully renamed folder in Digital Ocean from "${oldRangeName}" to "${formData.name}"`);
+        } catch (error) {
+          alert(`❌ Failed to rename folder in Digital Ocean. Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThe range has been updated in WordPress, but the Digital Ocean folder was not renamed.`);
+        }
+      }
+    }
 
     onClose();
   };
@@ -240,6 +326,235 @@ export const ProductRangesManager: React.FC = () => {
 
   const { grouped, ungrouped } = getGroupedRanges();
 
+  // Digital Ocean Sync State - organized by groups like the Manage Ranges tab
+  const [syncItemsGrouped, setSyncItemsGrouped] = React.useState<{
+    grouped: Record<string, Array<{
+      id: string;
+      name: string;
+      type: 'range';
+      exists?: boolean;
+      checked?: boolean;
+    }>>;
+    ungrouped: Array<{
+      id: string;
+      name: string;
+      type: 'range';
+      exists?: boolean;
+      checked?: boolean;
+    }>;
+  }>({
+    grouped: {},
+    ungrouped: []
+  });
+
+  // Function to check folder existence with enhanced console logging
+  const checkFolderExistence = React.useCallback(async () => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/check-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ type: 'ranges' }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.success && result.results) {
+          
+          // Update sync items with existence status
+          setSyncItemsGrouped(prev => {
+            const newGrouped = { ...prev.grouped };
+            const newUngrouped = [...prev.ungrouped];
+
+            // Update grouped items
+            Object.keys(newGrouped).forEach(groupName => {
+              newGrouped[groupName] = newGrouped[groupName].map(item => {
+                // Build expected folder path: GroupName/RangeName/
+                const groupNameNorm = groupName.toLowerCase().replace(/\/+$/, '');
+                const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '');
+                const expectedPath = groupNameNorm + '/' + rangeNameNorm + '/';
+                const existenceData = result.results.find((r: any) => {
+                  // Normalize backend folder_path or id
+                  const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/, '');
+                  return folderPath === (groupNameNorm + '/' + rangeNameNorm);
+                });
+                return {
+                  ...item,
+                  exists: existenceData ? existenceData.exists : false
+                };
+              });
+            });
+
+            // Update ungrouped items
+            newUngrouped.forEach((item, index) => {
+              // For ungrouped, just try to match by range name (could be improved if group known)
+              const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '');
+              const existenceData = result.results.find((r: any) => {
+                const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/, '');
+                return folderPath.endsWith('/' + rangeNameNorm);
+              });
+              if (existenceData) {
+                newUngrouped[index] = { ...item, exists: existenceData.exists };
+              }
+            });
+
+            return {
+              grouped: newGrouped,
+              ungrouped: newUngrouped
+            };
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to check folder existence:', error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    // Initialize sync items from grouped product ranges
+    const { grouped, ungrouped } = getGroupedRanges();
+    
+    const syncGrouped: Record<string, Array<{
+      id: string;
+      name: string;
+      type: 'range';
+      exists?: boolean;
+      checked?: boolean;
+    }>> = {};
+
+    // Process grouped ranges
+    Object.entries(grouped).forEach(([groupName, ranges]) => {
+      syncGrouped[groupName] = ranges.map(range => ({
+        id: range.id,
+        name: range.name,
+        type: 'range' as const,
+        exists: false,
+        checked: false,
+      }));
+    });
+
+    // Process ungrouped ranges
+    const syncUngrouped = ungrouped.map(range => ({
+      id: range.id,
+      name: range.name,
+      type: 'range' as const,
+      exists: false,
+      checked: false,
+    }));
+
+    setSyncItemsGrouped({
+      grouped: syncGrouped,
+      ungrouped: syncUngrouped
+    });
+
+    // Check folder existence after state is set
+    checkFolderExistence();
+  }, [productRanges, relationships, productGroups]); // Removed checkFolderExistence from deps
+
+  const handleItemCheck = (id: string, checked: boolean) => {
+    setSyncItemsGrouped(prev => {
+      const newGrouped = { ...prev.grouped };
+      const newUngrouped = [...prev.ungrouped];
+
+      // Check in grouped items
+      Object.keys(newGrouped).forEach(groupName => {
+        newGrouped[groupName] = newGrouped[groupName].map(item => 
+          item.id === id ? { ...item, checked } : item
+        );
+      });
+
+      // Check in ungrouped items
+      const ungroupedIndex = newUngrouped.findIndex(item => item.id === id);
+      if (ungroupedIndex !== -1) {
+        newUngrouped[ungroupedIndex] = { ...newUngrouped[ungroupedIndex], checked };
+      }
+
+      return {
+        grouped: newGrouped,
+        ungrouped: newUngrouped
+      };
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSyncItemsGrouped(prev => {
+      const newGrouped = { ...prev.grouped };
+      const newUngrouped = [...prev.ungrouped];
+
+      // Update all grouped items
+      Object.keys(newGrouped).forEach(groupName => {
+        newGrouped[groupName] = newGrouped[groupName].map(item => ({ ...item, checked }));
+      });
+
+      // Update all ungrouped items
+      newUngrouped.forEach((item, index) => {
+        newUngrouped[index] = { ...item, checked };
+      });
+
+      return {
+        grouped: newGrouped,
+        ungrouped: newUngrouped
+      };
+    });
+  };
+
+  const handleSync = async (selectedIds: string[]) => {
+    try {
+      const apiUrl = (window as any).urbanaAdmin?.apiUrl || '/wp-json/urbana/v1/';
+      const response = await fetch(`${apiUrl}digital-ocean/create-range-folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': (window as any).urbanaAdmin?.nonce || '',
+        },
+        body: JSON.stringify({ range_ids: selectedIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to create folders');
+      }
+
+      // Update exists status for synced items
+      setSyncItemsGrouped(prev => {
+        const newGrouped = { ...prev.grouped };
+        const newUngrouped = [...prev.ungrouped];
+
+        // Update grouped items
+        Object.keys(newGrouped).forEach(groupName => {
+          newGrouped[groupName] = newGrouped[groupName].map(item => 
+            selectedIds.includes(item.id) 
+              ? { ...item, exists: true, checked: false }
+              : item
+          );
+        });
+
+        // Update ungrouped items
+        newUngrouped.forEach((item, index) => {
+          if (selectedIds.includes(item.id)) {
+            newUngrouped[index] = { ...item, exists: true, checked: false };
+          }
+        });
+
+        return {
+          grouped: newGrouped,
+          ungrouped: newUngrouped
+        };
+      });
+
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
     <>
       <div className="flex justify-between items-center mb-6">
@@ -256,6 +571,15 @@ export const ProductRangesManager: React.FC = () => {
           Add Product Range
         </Button>
       </div>
+
+      <Tabs aria-label="Product Ranges Options" className="mb-6">
+        <Tab key="manage" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:grid-3x3" width={16} />
+            <span>Manage Ranges</span>
+          </div>
+        }>
+          <div className="mt-4">
 
       {productGroups.length === 0 ? (
         <Card>
@@ -321,8 +645,252 @@ export const ProductRangesManager: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+          </div>
+        </Tab>
+        
+        <Tab key="sync" title={
+          <div className="flex items-center space-x-2">
+            <Icon icon="lucide:cloud-upload" width={16} />
+            <span>Digital Ocean Sync</span>
+          </div>
+        }>
+          <div className="mt-4">
+            {/* Card-based Digital Ocean Sync Panel matching Product Groups */}
+            <Card className="urbana-card">
+              <CardHeader className="flex gap-3">
+                <Icon icon="lucide:cloud-upload" width={24} />
+                <div className="flex flex-col">
+                  <p className="text-md font-semibold">Product Ranges - Digital Ocean Sync</p>
+                  <p className="text-small text-default-500">
+                    Organize by groups like the Manage Ranges tab
+                  </p>
+                </div>
+              </CardHeader>
+              <CardBody>
+                {/* Global controls */}
+                <div className="flex items-center justify-between mb-4">
+                  <Button
+                    color="primary" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(true)}
+                    startContent={<Icon icon="lucide:check-square" width={16} />}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    color="default" 
+                    variant="flat"
+                    size="sm"
+                    onPress={() => handleSelectAll(false)}
+                    startContent={<Icon icon="lucide:square" width={16} />}
+                  >
+                    Clear All
+                  </Button>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    onPress={() => {
+                      const selectedIds: string[] = [];
+                      Object.values(syncItemsGrouped.grouped).forEach(ranges => {
+                        ranges.forEach(range => {
+                          if (range.checked) selectedIds.push(range.id);
+                        });
+                      });
+                      syncItemsGrouped.ungrouped.forEach(range => {
+                        if (range.checked) selectedIds.push(range.id);
+                      });
+                      handleSync(selectedIds);
+                    }}
+                    isDisabled={(() => {
+                      let hasSelected = false;
+                      Object.values(syncItemsGrouped.grouped).forEach(ranges => {
+                        ranges.forEach(range => {
+                          if (range.checked) hasSelected = true;
+                        });
+                      });
+                      syncItemsGrouped.ungrouped.forEach(range => {
+                        if (range.checked) hasSelected = true;
+                      });
+                      return !hasSelected;
+                    })()}
+                    startContent={<Icon icon="lucide:upload" width={16} />}
+                  >
+                    Sync Selected
+                  </Button>
+                </div>
+
+                {Object.keys(syncItemsGrouped.grouped).length === 0 && syncItemsGrouped.ungrouped.length === 0 ? (
+                  <div className="text-center py-8 text-foreground-500">
+                    <Icon icon="lucide:folder-x" width={48} className="mx-auto mb-2 opacity-50" />
+                    <p>No ranges available to sync</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Grouped ranges with card layout */}
+                    {Object.entries(syncItemsGrouped.grouped).map(([groupName, ranges]) => (
+                      <div key={groupName} className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Icon icon="lucide:layers" width={18} className="text-primary" />
+                          <h4 className="font-semibold text-lg text-primary">{groupName}</h4>
+                          <Chip size="sm" variant="flat" color="primary">
+                            {ranges.length} range{ranges.length !== 1 ? 's' : ''}
+                          </Chip>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {ranges.map((range) => {
+                            const rangeData = productRanges.find(r => r.id === range.id);
+                            const productsCount = rangeData ? getProductsForRange(range.id).length : 0;
+
+                            return (
+                              <Card 
+                                key={range.id} 
+                                className={`hover:shadow-lg transition-all cursor-pointer border-2 ${
+                                  range.checked 
+                                    ? 'border-primary bg-primary/5' 
+                                    : 'border-transparent hover:border-primary/30'
+                                }`}
+                                isPressable
+                                onPress={() => handleItemCheck(range.id, !range.checked)}
+                              >
+                                <CardHeader className="pb-3">
+                                  <div className="flex justify-between items-start w-full">
+                                    <div className="flex items-center gap-3">
+                                      <div className="relative">
+                                        <div className="w-10 h-10 bg-secondary-100 rounded-lg flex items-center justify-center">
+                                          <Icon icon="lucide:grid-3x3" width={20} className="text-secondary-600" />
+                                        </div>
+                                        <div className="absolute -top-1 -right-1">
+                                          <Checkbox
+                                            isSelected={range.checked || false}
+                                            onValueChange={(checked) => {
+                                              handleItemCheck(range.id, checked);
+                                            }}
+                                            size="sm"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <h4 className="text-md font-semibold">{range.name}</h4>
+                                        <Chip size="sm" variant="flat" color="secondary">
+                                          {productsCount} product{productsCount !== 1 ? 's' : ''}
+                                        </Chip>
+                                      </div>
+                                    </div>
+                                    <Chip
+                                      size="sm"
+                                      variant="flat"
+                                      color={range.exists ? "success" : "warning"}
+                                      startContent={
+                                        <Icon 
+                                          icon={range.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
+                                          width={14} 
+                                        />
+                                      }
+                                    >
+                                      {range.exists ? "Exists" : "Missing"}
+                                    </Chip>
+                                  </div>
+                                </CardHeader>
+                                {rangeData && (
+                                  <CardBody className="pt-0">
+                                    <p className="text-sm text-foreground-600">{rangeData.description || 'No description'}</p>
+                                  </CardBody>
+                                )}
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Ungrouped ranges with card layout */}
+                    {syncItemsGrouped.ungrouped.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Icon icon="lucide:alert-triangle" width={18} className="text-warning" />
+                          <h4 className="font-semibold text-lg text-warning">Ungrouped Ranges</h4>
+                          <Chip size="sm" variant="flat" color="warning">
+                            {syncItemsGrouped.ungrouped.length} range{syncItemsGrouped.ungrouped.length !== 1 ? 's' : ''}
+                          </Chip>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {syncItemsGrouped.ungrouped.map((range) => {
+                            const rangeData = productRanges.find(r => r.id === range.id);
+                            const productsCount = rangeData ? getProductsForRange(range.id).length : 0;
+
+                            return (
+                              <Card 
+                                key={range.id} 
+                                className={`hover:shadow-lg transition-all cursor-pointer border-2 ${
+                                  range.checked 
+                                    ? 'border-warning bg-warning/5' 
+                                    : 'border-transparent hover:border-warning/30'
+                                }`}
+                                isPressable
+                                onPress={() => handleItemCheck(range.id, !range.checked)}
+                              >
+                                <CardHeader className="pb-3">
+                                  <div className="flex justify-between items-start w-full">
+                                    <div className="flex items-center gap-3">
+                                      <div className="relative">
+                                        <div className="w-10 h-10 bg-warning-100 rounded-lg flex items-center justify-center">
+                                          <Icon icon="lucide:grid-3x3" width={20} className="text-warning-600" />
+                                        </div>
+                                        <div className="absolute -top-1 -right-1">
+                                          <Checkbox
+                                            isSelected={range.checked || false}
+                                            onValueChange={(checked) => {
+                                              handleItemCheck(range.id, checked);
+                                            }}
+                                            size="sm"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <h4 className="text-md font-semibold">{range.name}</h4>
+                                        <Chip size="sm" variant="flat" color="warning">
+                                          {productsCount} product{productsCount !== 1 ? 's' : ''}
+                                        </Chip>
+                                      </div>
+                                    </div>
+                                    <Chip
+                                      size="sm"
+                                      variant="flat"
+                                      color={range.exists ? "success" : "warning"}
+                                      startContent={
+                                        <Icon 
+                                          icon={range.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
+                                          width={14} 
+                                        />
+                                      }
+                                    >
+                                      {range.exists ? "Exists" : "Missing"}
+                                    </Chip>
+                                  </div>
+                                </CardHeader>
+                                {rangeData && (
+                                  <CardBody className="pt-0">
+                                    <p className="text-sm text-foreground-600">{rangeData.description || 'No description'}</p>
+                                  </CardBody>
+                                )}
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+        </Tab>
+      </Tabs>
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange} size="2xl" className="urbana-modal">
         <ModalContent>

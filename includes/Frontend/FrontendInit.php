@@ -81,6 +81,31 @@ class FrontendInit {
 					$product_data['stepperForm']['steps'][2]['productsData']  = $builder_data['products'];
 					$product_data['stepperForm']['steps'][2]['relationships'] = $builder_data['relationships'];
 				}
+
+				// Add detailed product content (step 4) from builder 'products' if available so the front-end gets per-product details (including faqs)
+				if ( isset( $builder_data['products'] ) && is_array( $builder_data['products'] ) ) {
+					if ( ! isset( $product_data['stepperForm']['steps'][3]['productDetails'] ) ) {
+						$product_data['stepperForm']['steps'][3]['productDetails'] = array();
+					}
+
+					foreach ( $builder_data['products'] as $p ) {
+						// Ensure required keys exist on product in builder data
+						if ( isset( $p['code'] ) ) {
+							$code = $p['code'];
+
+							// Map builder product fields into productDetails structure and include faqs if present
+							$product_data['stepperForm']['steps'][3]['productDetails'][ $code ] = array(
+								'name'        => $p['name'] ?? $code,
+								'overview'    => $p['overview'] ?? '',
+								'description' => $p['description'] ?? '',
+								'specifications' => $p['specifications'] ?? array(),
+								'imageGallery'   => $p['imageGallery'] ?? array(),
+								'files'          => $p['files'] ?? array(),
+								'faqs'           => $p['faqs'] ?? array(),
+							);
+						}
+					}
+				}
 			}
 
 			// Localize script for API calls and data

@@ -271,6 +271,8 @@ class DatabaseManager {
 			)
 		);
 
+		$result = false;
+
 		if ( $existing ) {
 			// Update existing record
 			$result = $this->wpdb->update(
@@ -285,10 +287,9 @@ class DatabaseManager {
 
 			// Set the insert_id to the existing ID for consistency
 			$this->wpdb->insert_id = $existing;
-			return $result;
 		} else {
 			// Insert new record
-			return $this->wpdb->insert(
+			$result = $this->wpdb->insert(
 				$this->table_prefix . 'product_data',
 				array(
 					'data_key'   => $key,
@@ -297,6 +298,13 @@ class DatabaseManager {
 				array( '%s', '%s' )
 			);
 		}
+
+		// Trigger reverse sync action if the update was successful
+		if ( $result !== false ) {
+			do_action( 'urbana_product_data_updated', $key, $data );
+		}
+
+		return $result;
 	}
 
 	public function get_last_insert_id() {

@@ -1,5 +1,8 @@
 <?php
 namespace Urbana\API;
+use Exception;
+// Add a checkpoint at the start of the file
+// error_log('Checkpoint: Start of RestAPI.php');
 
 class RestAPI {
 
@@ -11,6 +14,7 @@ class RestAPI {
 	}
 
 	public function register_routes() {
+		// error_log('Checkpoint: Inside register_routes method');
 		// Submit form endpoint
 		register_rest_route(
 			'urbana/v1',
@@ -255,9 +259,63 @@ class RestAPI {
 				'permission_callback' => '__return_true', // Public endpoint
 			)
 		);
+
+		// Simple test endpoint
+		register_rest_route(
+			'urbana/v1',
+			'/test',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'test_endpoint' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		// Image proxy endpoint
+		register_rest_route(
+			'urbana/v1',
+			'/image-proxy',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'image_proxy' ),
+				'permission_callback' => '__return_true', // Public endpoint
+				'args'                => array(
+					'imageUrl' => array(
+						'required' => false,
+						'type'     => 'string',
+					),
+					'image_path' => array(
+						'required' => false,
+						'type'     => 'string',
+					),
+				),
+			)
+		);
+
+		// Digital Ocean check folders endpoint
+		register_rest_route(
+			'urbana/v1',
+			'/digital-ocean/check-folders',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'check_do_folders' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+				'args'                => array(
+					'folders' => array(
+						'required' => false,
+						'type'     => 'array',
+					),
+					'type' => array(
+						'required' => false,
+						'type'     => 'string',
+					),
+				),
+			)
+		);
 	}
 
 	public function submit_form( $request ) {
+		// error_log('Checkpoint: Inside submit_form method');
 		$selections   = $request->get_param( 'selections' );
 		$submitted_at = $request->get_param( 'submittedAt' );
 
@@ -330,7 +388,31 @@ class RestAPI {
 
 	public function update_submission( $request ) {
 		$id   = $request->get_param( 'id' );
-		$data = array();
+		$data = array(); 
+        
+		// Check for status parameter
+		if ( $request->has_param( 'status' ) ) {
+			$data['status'] = sanitize_text_field( $request->get_param( 'status' ) );
+		}
+        
+		// Check for priority parameter
+		if ( $request->has_param( 'priority' ) ) {
+			$data['priority'] = sanitize_text_field( $request->get_param( 'priority' ) );
+		}
+        
+		// Check for notes parameter
+		if ( $request->has_param( 'notes' ) ) {
+			$data['notes'] = sanitize_textarea_field( $request->get_param( 'notes' ) );
+		}
+        
+		// Update submission in the database
+		$result = $this->db_manager->update_submission( $id, $data );
+        
+		if ( $result === false ) {
+			return new \WP_Error( 'update_failed', 'Failed to update submission', array( 'status' => 500 ) );
+		}
+        
+		return new \WP_REST_Response( array( 'success' => true ) );
 
 		if ( $request->has_param( 'status' ) ) {
 			$data['status'] = sanitize_text_field( $request->get_param( 'status' ) );
@@ -500,9 +582,11 @@ class RestAPI {
 		}
 
 		fclose( $output );
-		exit;
-	}
 
+				exit;
+			}
+
+		// Ensure proxy_download is closed before starting image_proxy
 	private function export_xlsx( $submissions ) {
 		// For XLSX export, you'd need a library like PhpSpreadsheet
 		// For now, fallback to CSV
@@ -556,9 +640,6 @@ class RestAPI {
 				} else {
 					$errors[] = 'Failed to create images folder: ' . $structure['imagesPath'] . ' (Full path: ' . $images_path . ')';
 				}
-			} else {
-				// Folder exists, just note it
-				$errors[] = 'Images folder already exists: ' . $structure['imagesPath'];
 			}
 
 			// Create downloads folder
@@ -1010,14 +1091,120 @@ class RestAPI {
 		);
 	}
 
-
 	public function proxy_download( $request ) {
+		error_log('Checkpoint: Inside proxy_download method');
 		$file_url = $request->get_param( 'url' );
+		$file_path = $request->get_param( 'path' );
 
-		if ( empty( $file_url ) ) {
-			return new \WP_Error( 'invalid_url', 'File URL is required', array( 'status' => 400 ) );
+		if ( empty( $file_url ) && empty( $file_path ) ) {
+			return new \WP_Error( 'invalid_params', 'File URL or path is required', array( 'status' => 400 ) );
 		}
 
+		// If path param provided, fetch via DigitalOcean SDK wrapper
+		if ( ! empty( $file_path ) ) {
+			$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+			if ( ! $do_spaces->is_configured() ) {
+				return new \WP_Error( 'do_not_configured', 'Digital Ocean Spaces not configured', array( 'status' => 400 ) );
+			}
+
+			$file_data = $do_spaces->fetch_private_file( $file_path );
+
+			if ( ! $file_data || ! isset( $file_data['success'] ) || ! $file_data['success'] ) {
+				return new \WP_Error( 'fetch_failed', 'Failed to fetch file: ' . ( $file_data['error'] ?? 'Unknown' ), array( 'status' => 404 ) );
+			}
+
+			$status_code = 200;
+			$file_content   = $file_data['data'];
+			$content_type   = $file_data['content_type'] ?? 'application/octet-stream';
+			$content_length = strlen( $file_content );
+			$filename       = basename( $file_path );
+		} else {
+			// Validate URL is from Digital Ocean Spaces
+			$parsed_url = parse_url( $file_url );
+			if ( ! $parsed_url || ! str_contains( $parsed_url['host'], 'digitaloceanspaces.com' ) ) {
+				return new \WP_Error( 'invalid_source', 'Only Digital Ocean Spaces URLs are allowed', array( 'status' => 403 ) );
+			}
+
+			// Fetch the file with streaming
+			$response = wp_remote_get(
+				$file_url,
+				array(
+					'timeout'     => 300,
+					'redirection' => 5,
+					'httpversion' => '1.1',
+					'blocking'    => true,
+					'sslverify'   => true,
+				)
+			);
+
+			if ( is_wp_error( $response ) ) {
+				wp_send_json_error(
+					array(
+						'message' => 'Download failed: ' . $response->get_error_message(),
+					),
+					500
+				);
+				exit;
+			}
+
+			$status_code = wp_remote_retrieve_response_code( $response );
+			if ( $status_code !== 200 ) {
+				wp_send_json_error(
+					array(
+						'message' => 'Failed to fetch file. Status: ' . $status_code,
+					),
+					$status_code
+				);
+				exit;
+			}
+			// Get file content and metadata
+			$file_content   = wp_remote_retrieve_body( $response );
+			$content_type   = wp_remote_retrieve_header( $response, 'content-type' );
+			$content_length = wp_remote_retrieve_header( $response, 'content-length' );
+			$filename       = basename( $parsed_url['path'] );
+
+			// Validate we got content
+			if ( empty( $file_content ) ) {
+				wp_send_json_error(
+					array(
+						'message' => 'File content is empty',
+					),
+					500
+				);
+				exit;
+			}
+
+			// Clear all output buffers
+			while ( ob_get_level() ) {
+				ob_end_clean();
+			}
+
+			// Prevent any other output
+			if ( ! headers_sent() ) {
+				// Set headers for file download
+				status_header( 200 );
+				nocache_headers();
+
+				header( 'Content-Type: ' . ( $content_type ?: 'application/octet-stream' ) );
+				header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $filename ) . '"' );
+				header( 'Content-Length: ' . ( $content_length ?: strlen( $file_content ) ) );
+				header( 'Content-Transfer-Encoding: binary' );
+				header( 'Accept-Ranges: bytes' );
+				header( 'Cache-Control: private, must-revalidate' );
+				header( 'Pragma: public' );
+				header( 'Expires: 0' );
+			}
+
+			// Output the file content
+			echo $file_content;
+
+			// Flush output and exit
+			if ( function_exists( 'fastcgi_finish_request' ) ) {
+				fastcgi_finish_request();
+			}
+
+			exit;
+		}
 		// Validate URL is from Digital Ocean Spaces
 		$parsed_url = parse_url( $file_url );
 		if ( ! $parsed_url || ! str_contains( $parsed_url['host'], 'digitaloceanspaces.com' ) ) {
@@ -1056,7 +1243,6 @@ class RestAPI {
 			);
 			exit;
 		}
-
 		// Get file content and metadata
 		$file_content   = wp_remote_retrieve_body( $response );
 		$content_type   = wp_remote_retrieve_header( $response, 'content-type' );
@@ -1105,4 +1291,286 @@ class RestAPI {
 
 		exit;
 	}
+
+	/**
+	 * Image proxy endpoint to securely serve private Digital Ocean Spaces images
+	 */
+	public function image_proxy( $request ) {
+		error_log('Checkpoint: Inside image_proxy method');
+		// Accept both 'imageUrl' and 'image_path' for backward compatibility
+		$image_path = $request->get_param( 'imageUrl' ) ?: $request->get_param( 'image_path' );
+		
+		if ( empty( $image_path ) ) {
+			return new \WP_Error( 'missing_path', 'Image path is required', array( 'status' => 400 ) );
+		}
+
+		// Initialize Digital Ocean Spaces utility
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		
+		if ( ! $do_spaces->is_configured() ) {
+			return new \WP_Error( 'do_not_configured', 'Digital Ocean Spaces not configured', array( 'status' => 400 ) );
+		}
+
+		// Clean the path - remove any existing URLs and extract just the path
+		if ( filter_var( $image_path, FILTER_VALIDATE_URL ) ) {
+			// Extract path from full URL
+			$parsed = parse_url( $image_path );
+			if ( isset( $parsed['path'] ) ) {
+				$image_path = ltrim( $parsed['path'], '/' );
+				
+				// Get config to know bucket name
+				$config = $do_spaces->get_configuration();
+				$bucket_name = $config['bucket_name'];
+				
+				// Remove bucket name if it's in the path (for some DO URLs)
+				if ( strpos( $image_path, $bucket_name . '/' ) === 0 ) {
+					$image_path = substr( $image_path, strlen( $bucket_name ) + 1 );
+				}
+				
+			}
+		}
+
+		// Ensure path doesn't start with / and decode any URL encoding
+		$image_path = ltrim( $image_path, '/' );
+		$image_path = urldecode( $image_path );
+
+		try {
+			// Fetch the file directly from Digital Ocean Spaces
+			$file_data = $do_spaces->fetch_private_file( $image_path );
+			
+			if ( ! $file_data || ! $file_data['success'] || ! isset( $file_data['data'] ) ) {
+				$error_msg = isset( $file_data['error'] ) ? $file_data['error'] : 'Image not found or inaccessible';
+				return new \WP_Error( 'file_not_found', $error_msg, array( 'status' => 404 ) );
+			}
+
+			$body = $file_data['data'];
+			$content_type = isset( $file_data['content_type'] ) ? $file_data['content_type'] : 'image/jpeg';
+
+			// Validate it's an image
+			if ( ! str_starts_with( $content_type, 'image/' ) ) {
+				return new \WP_Error( 'not_image', 'File is not an image', array( 'status' => 400 ) );
+			}
+
+			// Return base64 encoded image data for secure embedding
+			if (empty($body)) {
+				return new \WP_Error('empty_body', 'Image data is empty', array('status' => 500));
+			}
+
+			$base64_image = 'data:' . $content_type . ';base64,' . base64_encode($body);
+
+			return new \WP_REST_Response(array(
+				'success' => true,
+				'image_data' => $base64_image,
+				'content_type' => $content_type
+			), 200 );
+
+		} catch ( Exception $e ) {
+			return new \WP_Error( 'fetch_failed', 'Failed to fetch image: ' . $e->getMessage(), array( 'status' => 500 ) );
+		}
+	}
+
+	/**
+	 * Check Digital Ocean folders endpoint
+	 */
+	public function check_do_folders( $request ) {
+		$folders = $request->get_param( 'folders' );
+		$type = $request->get_param( 'type' );
+		error_log('GOD_DEBUG: check_do_folders called with type=' . print_r($type, true) . ' folders=' . print_r($folders, true));
+		// If type is provided but no folders array, generate folders based on type
+		if ( empty( $folders ) && ! empty( $type ) ) {
+			$folders = $this->get_folders_by_type( $type );
+			error_log('GOD_DEBUG: get_folders_by_type(' . $type . ') returned: ' . print_r($folders, true));
+		}
+		if ( empty( $folders ) || ! is_array( $folders ) ) {
+			return new \WP_Error( 'missing_folders', 'Folders array or type is required', array( 'status' => 400 ) );
+		}
+		$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+		$results = array();
+		$debug_info = array();
+		foreach ( $folders as $folder ) {
+			   try {
+				   $folder_debug = array();
+				// Handle both simple folder paths and complex structures with ID mapping
+				if ( is_array( $folder ) && isset( $folder['id'] ) && isset( $folder['folder_path'] ) ) {
+					$folder_id = $folder['id'];
+					$folder_path = sanitize_text_field( $folder['folder_path'] );
+				} else {
+					$folder_id = sanitize_text_field( $folder );
+					$folder_path = sanitize_text_field( $folder );
+				}
+				   error_log('GOD_DEBUG: About to check folder: id=' . $folder_id . ' path=' . $folder_path);
+				   // Check if folder exists and get its contents
+				   $folder_exists = $do_spaces->folder_exists( $folder_path, $folder_debug );
+				   $file_count = 0;
+				   if ( $folder_exists ) {
+					   $files = $do_spaces->list_files( $folder_path );
+					   $file_count = is_array( $files ) ? count( $files ) : 0;
+				   }
+				   // Debug logging for troubleshooting
+				   error_log('GOD_DEBUG: Folder check result: ID=' . $folder_id . ' | Path=' . $folder_path . ' | Exists=' . ($folder_exists ? 'true' : 'false') . ' | FileCount=' . $file_count);
+				   $results[] = array(
+					   'id' => $folder_id,
+					   'exists' => $folder_exists,
+					   'fileCount' => $file_count,
+					   'status' => $folder_exists ? 'found' : 'not_found',
+					   'folderPath' => $folder_path // Include the actual path for debugging
+				   );
+				   $debug_info[] = array(
+					   'id' => $folder_id,
+					   'path' => $folder_path,
+					   'debug' => $folder_debug
+				   );
+			} catch ( Exception $e ) {
+				$results[] = array(
+					'id' => $folder_id,
+					'exists' => false,
+					'fileCount' => 0,
+					'status' => 'error',
+					'error' => $e->getMessage(),
+					'folderPath' => $folder_path
+				);
+			}
+		}
+		   error_log('GOD_DEBUG: check_do_folders final results: ' . print_r($results, true));
+		   return new \WP_REST_Response( array(
+			   'success' => true,
+			   'results' => $results,
+			   'debug' => $debug_info
+		   ), 200 );
+	}
+
+	/**
+	 * Get folders based on type from database
+	 */
+	private function get_folders_by_type( $type ) {
+		$folders = array();
+		error_log('GOD_DEBUG: get_folders_by_type called with type=' . $type);
+		$product_data = $this->db_manager->get_product_data( null, 'stepper_data_builder_1' );
+		// Build lookup tables for group/range relationships
+		$rangeIdToGroup = array();
+		$productIdToRange = array();
+		$productIdToGroup = array();
+		if ($product_data && isset($product_data['productRanges'])) {
+			foreach ($product_data['productRanges'] as $range) {
+				if (isset($range['id'], $range['groupName'])) {
+					$rangeIdToGroup[$range['id']] = $range['groupName'];
+				}
+			}
+		}
+		if ($product_data && isset($product_data['products'])) {
+			foreach ($product_data['products'] as $product) {
+				if (isset($product['id'], $product['rangeName'])) {
+					$productIdToRange[$product['id']] = $product['rangeName'];
+				}
+				if (isset($product['id'], $product['groupName'])) {
+					$productIdToGroup[$product['id']] = $product['groupName'];
+				}
+			}
+		}
+		switch ( $type ) {
+			case 'groups':
+				if ( $product_data && isset( $product_data['productGroups'] ) ) {
+					// Get all actual folder names from Spaces (top-level only)
+					$do_spaces = new \Urbana\Utils\DigitalOceanSpaces();
+					$all_folders = $do_spaces->list_all_folder_names();
+					// Only keep top-level folders
+					$top_level_folders = array();
+					foreach ($all_folders as $folder) {
+						$parts = explode('/', $folder);
+						if (count($parts) === 1 || (count($parts) === 2 && $parts[1] === '')) {
+							$top_level_folders[] = rtrim($parts[0], '/');
+						}
+					}
+					foreach ( $product_data['productGroups'] as $group ) {
+						error_log('GOD_DEBUG: group name=' . print_r($group['name'], true));
+						$group_name = rtrim($group['name'], '/');
+						// Try to find a matching folder (case-insensitive)
+						$matched = null;
+						foreach ($top_level_folders as $folder) {
+							if (strtolower($folder) === strtolower($group_name)) {
+								$matched = $folder;
+								break;
+							}
+						}
+						if ($matched !== null) {
+							$folders[] = $matched . '/';
+							error_log('GOD_DEBUG: mapped group name ' . $group_name . ' to actual folder ' . $matched);
+						} else {
+							$folders[] = $group_name . '/'; // fallback
+							error_log('GOD_DEBUG: no match for group name ' . $group_name . ', using as-is');
+						}
+					}
+				}
+				break;
+			case 'ranges':
+				   if ( $product_data && isset( $product_data['productRanges'] ) ) {
+					   foreach ( $product_data['productRanges'] as $range ) {
+						   // Always use the actual group name from productGroups for this range
+						   $group_name = null;
+						   if (isset($range['groupName']) && !empty($range['groupName'])) {
+							   $group_name = $range['groupName'];
+						   } elseif (isset($rangeIdToGroup[$range['id']]) && !empty($rangeIdToGroup[$range['id']])) {
+							   $group_name = $rangeIdToGroup[$range['id']];
+						   }
+						   // Fallback: try to find group by matching range name to group/range relationships
+						   if (!$group_name && $product_data && isset($product_data['productGroups'])) {
+							   foreach ($product_data['productGroups'] as $group) {
+								   if (isset($group['ranges']) && is_array($group['ranges'])) {
+									   foreach ($group['ranges'] as $g_range) {
+										   if (is_array($g_range) && isset($g_range['id']) && $g_range['id'] === $range['id']) {
+											   $group_name = $group['name'];
+											   break 2;
+										   } elseif ($g_range === $range['name']) {
+											   $group_name = $group['name'];
+											   break 2;
+										   }
+									   }
+								   }
+							   }
+						   }
+						   if (!$group_name) {
+							   error_log('GOD_DEBUG: Could not determine group for range ' . print_r($range, true));
+							   continue; // skip this range if we can't determine group
+						   }
+						   error_log('GOD_DEBUG: range name=' . print_r($range['name'], true) . ' group_name=' . print_r($group_name, true));
+						   $folder_path = rtrim($group_name, '/') . '/' . rtrim($range['name'], '/') . '/';
+						   $folders[] = array(
+							   'id' => $range['id'],
+							   'folder_path' => $folder_path
+						   );
+					   }
+				   }
+				break;
+			case 'products':
+				if ( $product_data && isset( $product_data['products'] ) ) {
+					foreach ( $product_data['products'] as $product ) {
+						// Try to get group and range from product, else lookup from relationships
+						$group_name = isset($product['groupName']) ? $product['groupName'] : (isset($productIdToGroup[$product['id']]) ? $productIdToGroup[$product['id']] : 'default');
+						$range_name = isset($product['rangeName']) ? $product['rangeName'] : (isset($productIdToRange[$product['id']]) ? $productIdToRange[$product['id']] : 'default');
+						$product_code = isset( $product['code'] ) ? $product['code'] : $product['name'];
+						error_log('GOD_DEBUG: product=' . print_r($product, true) . ' group_name=' . print_r($group_name, true) . ' range_name=' . print_r($range_name, true));
+						if ($group_name === 'default' || $range_name === 'default') {
+							error_log('GOD_DEBUG: Product missing groupName or rangeName: ' . print_r($product, true));
+						}
+						$folders[] = rtrim($group_name, '/') . '/' . rtrim($range_name, '/') . '/' . rtrim($product_code, '/') . '/';
+					}
+				}
+				break;
+		}
+		error_log('GOD_DEBUG: get_folders_by_type returning: ' . print_r($folders, true));
+		return $folders;
+	}
+
+	/**
+	 * Simple test endpoint to verify REST API is working
+	 */
+	public function test_endpoint( $request ) {
+		error_log( 'Test endpoint called successfully' );
+		return new \WP_REST_Response( array(
+			'success' => true,
+			'message' => 'REST API is working',
+			'timestamp' => current_time( 'mysql' )
+		), 200 );
+	}
 }
+

@@ -1,7 +1,8 @@
 import React, { useMemo, useCallback, useEffect, useRef } from "react";
-import { Tabs, Tab, Card, CardBody, Select, SelectItem, Image } from "@heroui/react";
+import { Tabs, Tab, Card, CardBody, Select, SelectItem } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
+import SecureImage from "../SecureImage";
 
 interface Step5Props {
   data: {
@@ -227,12 +228,11 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
                   <div className="border border-default-200 rounded-medium p-4">
                     <h4 className="text-sm font-medium mb-2">Preview</h4>
                     <div className="aspect-video mb-4">
-                      <Image
+                      <SecureImage
                         key={displayImage}
-                        removeWrapper
-                        alt="Product preview with selected options"
+                        imagePath={displayImage}
+                        productCode={selectedProductCode || ""}
                         className="w-full h-full object-cover rounded-medium"
-                        src={displayImage}
                       />
                     </div>
 
@@ -283,7 +283,7 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
                             <div key={value} className="p-3 border border-default-200 rounded-medium">
                               {imageUrl && (
                                 <div className="aspect-video mb-2 rounded-small overflow-hidden">
-                                  <Image removeWrapper alt={value} className="w-full h-full object-cover" src={imageUrl} />
+                                  <SecureImage imagePath={imageUrl} productCode={selectedProductCode || ""} className="w-full h-full object-cover" />
                                 </div>
                               )}
                               <div className="font-medium">{value}</div>

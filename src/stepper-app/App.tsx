@@ -9,6 +9,7 @@ export default function App() {
   const { productData, initializeProductData } = useStepperStore();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const debugMode = (window as any).urbanaDebugMode || false;
 
   // Initialize product data from window object on mount
   useEffect(() => {
@@ -16,17 +17,17 @@ export default function App() {
       const windowData = (window as any).urbanaPublic;
 
       if (windowData?.productData) {
-        console.log("Loading product data from database:", windowData.productData);
+        if (debugMode) console.log("Loading product data from database:", windowData.productData);
         initializeProductData();
         setError(null);
       } else {
-        console.warn("No product data found in window.urbanaPublic, using default data");
+        if (debugMode) console.warn("No product data found in window.urbanaPublic, using default data");
         // Fallback to default data if no database data available
         useStepperStore.getState().setProductData(defaultProductData);
         setError("Using default product data - database may be empty");
       }
     } catch (err) {
-      console.error("Error initializing product data:", err);
+      if (debugMode) console.error("Error initializing product data:", err);
       setError("Failed to load product data");
       // Fallback to default data on error
       useStepperStore.getState().setProductData(defaultProductData);

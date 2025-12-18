@@ -23,6 +23,7 @@ interface ReverseSyncSettings {
   auto_create_range_folders: boolean;
   auto_create_product_folders: boolean;
   base_path: string;
+  preserve_folder_case?: boolean;
 }
 
 interface DigitalOceanSettingsData {
@@ -521,6 +522,22 @@ export const DigitalOceanSettings: React.FC<DigitalOceanSettingsProps> = ({ sett
                           className="sr-only peer"
                           checked={settings.reverse_sync?.auto_create_product_folders !== false}
                           onChange={(e) => handleReverseSyncChange("auto_create_product_folders", e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-small hover:bg-default/10">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="lucide:letter-case" width={16} />
+                        <span className="text-sm">Preserve folder case</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.reverse_sync?.preserve_folder_case === true}
+                          onChange={(e) => handleReverseSyncChange("preserve_folder_case", e.target.checked)}
                         />
                         <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                       </label>

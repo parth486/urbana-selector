@@ -658,6 +658,22 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
             return updated;
           });
         }
+      } else {
+        console.error('[DO Sync] check-folders returned HTTP', response.status);
+        setSyncItemsGrouped(prev => {
+          const newGrouped = { ...prev.grouped };
+          const newUngrouped = [...prev.ungrouped];
+
+          Object.keys(newGrouped).forEach(rangeName => {
+            newGrouped[rangeName] = newGrouped[rangeName].map(item => ({ ...item, exists: false }));
+          });
+
+          newUngrouped.forEach((item, index) => {
+            newUngrouped[index] = { ...item, exists: false };
+          });
+
+          return { grouped: newGrouped, ungrouped: newUngrouped };
+        });
       }
     } catch (error) {
       console.error('❌ Failed to check folder existence:', error);
@@ -682,7 +698,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         id: product.id,
         name: product.name || product.code,
         type: 'product' as const,
-        exists: false,
+        exists: undefined as unknown as boolean | undefined,
         checked: false,
       }));
     });
@@ -692,7 +708,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       id: product.id,
       name: product.name || product.code,
       type: 'product' as const,
-      exists: false,
+      exists: undefined as unknown as boolean | undefined,
       checked: false,
     }));
 
@@ -1118,15 +1134,18 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                                     <Chip
                                       size="sm"
                                       variant="flat"
-                                      color={product.exists ? "success" : "warning"}
+                                      color={product.exists === true ? "success" : product.exists === false ? "warning" : "default"}
                                       startContent={
-                                        <Icon 
-                                          icon={product.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
-                                          width={14} 
-                                        />
+                                        product.exists === undefined ? (
+                                          <Icon icon="lucide:loader-2" width={12} className="animate-spin" />
+                                        ) : product.exists ? (
+                                          <Icon icon="lucide:check-circle" width={14} />
+                                        ) : (
+                                          <Icon icon="lucide:alert-circle" width={14} />
+                                        )
                                       }
                                     >
-                                      {product.exists ? "Exists" : "Missing"}
+                                      {product.exists === undefined ? "Checking..." : product.exists ? "Exists" : "Missing"}
                                     </Chip>
                                   </div>
                                 </CardHeader>
@@ -1196,15 +1215,18 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                                     <Chip
                                       size="sm"
                                       variant="flat"
-                                      color={product.exists ? "success" : "warning"}
+                                      color={product.exists === true ? "success" : product.exists === false ? "warning" : "default"}
                                       startContent={
-                                        <Icon 
-                                          icon={product.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
-                                          width={14} 
-                                        />
+                                        product.exists === undefined ? (
+                                          <Icon icon="lucide:loader-2" width={12} className="animate-spin" />
+                                        ) : product.exists ? (
+                                          <Icon icon="lucide:check-circle" width={14} />
+                                        ) : (
+                                          <Icon icon="lucide:alert-circle" width={14} />
+                                        )
                                       }
                                     >
-                                      {product.exists ? "Exists" : "Missing"}
+                                      {product.exists === undefined ? "Checking..." : product.exists ? "Exists" : "Missing"}
                                     </Chip>
                                   </div>
                                 </CardHeader>

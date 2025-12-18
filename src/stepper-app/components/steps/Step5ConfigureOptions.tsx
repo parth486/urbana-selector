@@ -1,8 +1,9 @@
-import React, { useMemo, useCallback, useEffect, useRef } from "react";
+import React, { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { Tabs, Tab, Card, CardBody, Select, SelectItem } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import SecureImage from "../SecureImage";
+import Lightbox from "../Lightbox";
 
 interface Step5Props {
   data: {
@@ -19,6 +20,7 @@ interface Step5Props {
 }
 
 export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onOptionsChange, selectedProductCode }) => {
+  const debugMode = (window as any).urbanaDebugMode || false;
   const previousProductCode = useRef<string | undefined>(selectedProductCode);
   const lastChangedOption = useRef<string | null>(null);
 
@@ -38,7 +40,7 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
     return data.options;
   }, [selectedProductCode, data.productOptions, data.options]);
 
-  console.log(data);
+  if (debugMode) console.log(data);
 
   // Check if product has any options
   const hasOptions = useMemo(() => {
@@ -181,6 +183,18 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
     );
   }
 
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+
+  const openLightboxWith = (images: string[], i = 0) => {
+    setLightboxImages(images || []);
+    setLightboxIndex(i);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => setLightboxOpen(false);
+
   return (
     <motion.div className="space-y-6" initial="hidden" animate="show" variants={fadeIn}>
       {selectedProductCode && (
@@ -227,12 +241,13 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
                 <div>
                   <div className="border border-default-200 rounded-medium p-4">
                     <h4 className="text-sm font-medium mb-2">Preview</h4>
-                    <div className="aspect-video mb-4">
+                    <div className="aspect-video mb-4 cursor-pointer" onClick={() => openLightboxWith([displayImage], 0)}>
                       <SecureImage
                         key={displayImage}
                         imagePath={displayImage}
                         productCode={selectedProductCode || ""}
                         className="w-full h-full object-cover rounded-medium"
+                        onClick={() => openLightboxWith([displayImage], 0)}
                       />
                     </div>
 
@@ -281,9 +296,9 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
 
                           return (
                             <div key={value} className="p-3 border border-default-200 rounded-medium">
-                              {imageUrl && (
-                                <div className="aspect-video mb-2 rounded-small overflow-hidden">
-                                  <SecureImage imagePath={imageUrl} productCode={selectedProductCode || ""} className="w-full h-full object-cover" />
+                                {imageUrl && (
+                                <div className="aspect-video mb-2 rounded-small overflow-hidden cursor-pointer" onClick={() => openLightboxWith([imageUrl], 0)}>
+                                  <SecureImage imagePath={imageUrl} productCode={selectedProductCode || ""} className="w-full h-full object-cover" onClick={() => openLightboxWith([imageUrl], 0)} />
                                 </div>
                               )}
                               <div className="font-medium">{value}</div>
@@ -364,6 +379,8 @@ export const Step5ConfigureOptions: React.FC<Step5Props> = ({ data, options, onO
           </Card>
         </Tab>
       </Tabs>
+        {/* Lightbox for preview/option images */}
+        <Lightbox images={lightboxImages} productCode={selectedProductCode || ''} open={lightboxOpen} initialIndex={lightboxIndex} onClose={closeLightbox} />
     </motion.div>
   );
 };

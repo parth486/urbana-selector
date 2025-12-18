@@ -16,7 +16,7 @@
     "@heroui/react": "^2.8.5",
     "@heroui/toast": "^2.0.16",
     "@iconify-json/lucide": "^1.2.68",
-    "@iconify/react": "latest",
+    "@iconify/react": "6.0.2",
     "@tailwindcss/postcss": "4.1.11",
     "@tailwindcss/vite": "4.1.11",
     "@tanstack/react-form": "^0.29.2",

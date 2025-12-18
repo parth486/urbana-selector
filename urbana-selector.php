@@ -114,6 +114,11 @@ class UrbanaSelector {
 		if ( get_option( 'urbana_do_auto_create_product_folders' ) === false ) {
 			add_option( 'urbana_do_auto_create_product_folders', true, '', 'no' );
 		}
+
+		// Option: preserve the original case of folder path segments when creating folders in DigitalOcean
+		if ( get_option( 'urbana_do_preserve_folder_case' ) === false ) {
+			add_option( 'urbana_do_preserve_folder_case', false, '', 'no' );
+		}
 		
 		// Fix any incorrect base_path values from old versions
 		$this->fix_base_path_setting();

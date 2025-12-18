@@ -39,6 +39,8 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
   const { currentStep, selections, isSubmitting, isSubmitted, updateSelection, nextStep, previousStep, goToStep, canProceedToStep } =
     useStepperStore();
 
+  const debugMode = (window as any).urbanaDebugMode || false;
+
   const totalSteps = data.stepperForm.steps.length;
 
   // Get valid options for the selected product
@@ -69,11 +71,13 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
 
   // Debugging: log the relevant state so we can trace incorrect selections/options in QA
   useEffect(() => {
-    console.log("[ProductStepper] currentStep:", currentStep);
-    console.log("[ProductStepper] selections:", selections);
-    console.log("[ProductStepper] stepData:", data.stepperForm.steps[currentStep - 1]);
-    console.log("[ProductStepper] validProductOptions:", validProductOptions);
-  }, [currentStep, selections, data.stepperForm.steps, validProductOptions]);
+    if (debugMode) {
+      console.log("[ProductStepper] currentStep:", currentStep);
+      console.log("[ProductStepper] selections:", selections);
+      console.log("[ProductStepper] stepData:", data.stepperForm.steps[currentStep - 1]);
+      console.log("[ProductStepper] validProductOptions:", validProductOptions);
+    }
+  }, [currentStep, selections, data.stepperForm.steps, validProductOptions, debugMode]);
 
   const handleSubmit = useCallback(async () => {
     useStepperStore.getState().setSubmitting(true);
@@ -88,7 +92,7 @@ export const ProductStepper: React.FC<ProductStepperProps> = ({ data }) => {
         contactInfo: selections.contactInfo,
       };
 
-      console.log("Submitting form data:", submissionData);
+      if (debugMode) console.log("Submitting form data:", submissionData);
       // Make API call to submit the form
       const response = await fetch("/wp-json/urbana/v1/submit-form", {
         method: "POST",

@@ -69,8 +69,25 @@ export const SettingsManager: React.FC = () => {
         }));
       }
 
-      // Load general settings from WordPress options if available
-      // For now, we'll use defaults
+      // Load general settings
+      const generalResponse = await fetch("/wp-json/urbana/v1/general-settings", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+      });
+
+      if (generalResponse.ok) {
+        const generalSettings = await generalResponse.json();
+        setSettings((prev) => ({
+          ...prev,
+          general: {
+            ...prev.general,
+            ...generalSettings,
+          },
+        }));
+      }
     } catch (error) {
       console.error("Failed to load settings:", error);
     } finally {
@@ -106,8 +123,19 @@ export const SettingsManager: React.FC = () => {
         throw new Error("Failed to save Digital Ocean settings");
       }
 
-      // Save general settings (implement endpoint if needed)
-      // TODO: Implement general settings save endpoint
+      // Save general settings
+      const generalResponse = await fetch("/wp-json/urbana/v1/general-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": (window as any).urbanaAdmin?.nonce || "",
+        },
+        body: JSON.stringify(settings.general),
+      });
+
+      if (!generalResponse.ok) {
+        throw new Error("Failed to save general settings");
+      }
 
       setHasChanges(false);
       setLastSaved(new Date());

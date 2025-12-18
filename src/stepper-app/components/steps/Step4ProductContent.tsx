@@ -1,8 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { Tabs, Tab, Card, CardBody, Accordion, AccordionItem, Button } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
-import SecureImage from "../SecureImage";
+import SecureImage, { prefetchImage } from "../SecureImage";
+import Lightbox from "../Lightbox";
 
 interface Step4Props {
   data: {
@@ -23,6 +24,7 @@ interface ProductDetail {
 
 export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) => {
   const productDetails = data.productDetails[productId];
+  const debugMode = (window as any).urbanaDebugMode || false;
 
   // Download handler
   const handleDownload = useCallback(async (fileUrl: string, fileName: string) => {
@@ -76,7 +78,7 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      console.error("Download failed:", error);
+      if (debugMode) console.error("Download failed:", error);
       alert("Failed to download file. Please try again or contact support.");
     }
   }, []);
@@ -103,18 +105,92 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
 
   const featuredImage = productDetails.imageGallery.length > 0 ? productDetails.imageGallery[0] : "";
 
+  const galleryRef = useRef<HTMLDivElement | null>(null);
+
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const openLightboxAt = (i: number) => {
+    if (debugMode) console.warn(`[Step4] openLightboxAt called with index: ${i}`);
+    setLightboxIndex(i);
+    setLightboxOpen(true);
+  };
+
+  useEffect(() => {
+    if (debugMode) console.warn('[Step4] lightboxOpen state changed', { lightboxOpen, lightboxIndex });
+  }, [lightboxOpen, lightboxIndex]);
+
+  const closeLightbox = () => setLightboxOpen(false);
+
+  useEffect(() => {
+    if (debugMode) console.log('[Step4] useEffect mount — Step4ProductContent mounted', { galleryRefPresent: !!galleryRef.current });
+
+    const handler = (e: MouseEvent) => {
+      try {
+        const gallery = galleryRef.current;
+        if (!gallery) return;
+        if (debugMode) console.log('[Step4 gallery container click] event', e.type, 'target:', (e.target as any)?.tagName, 'defaultPrevented', e.defaultPrevented);
+        let node: Node | null = e.target as Node | null;
+        // walk up looking for data-gallery-index; skip non-Element nodes
+        while (node && node !== gallery) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            node = node.parentNode;
+            continue;
+          }
+          const el = node as HTMLElement;
+          const idx = el.getAttribute?.('data-gallery-index');
+          if (idx !== null && idx !== undefined) {
+            if (debugMode) console.log(`[Step4 gallery container click] index found: ${idx}`);
+            openLightboxAt(parseInt(idx, 10));
+            return;
+          }
+          // inspect pointer-events style as we walk up
+          const style = window.getComputedStyle(el);
+          if (debugMode) console.log('[Step4 gallery container click] ancestor:', el.tagName, 'pointer-events:', style.pointerEvents);
+          node = node.parentNode;
+        }
+
+        // nothing found — fallback: check bounding boxes (in case a pseudo element captured it)
+        const clickX = (e as any).clientX as number;
+        const clickY = (e as any).clientY as number;
+        const thumbs = gallery.querySelectorAll('[data-gallery-index]');
+        for (let i = 0; i < thumbs.length; i++) {
+          const thumb = thumbs[i] as HTMLElement;
+          const rect = thumb.getBoundingClientRect();
+          if (clickX >= rect.left && clickX <= rect.right && clickY >= rect.top && clickY <= rect.bottom) {
+            const idx = thumb.getAttribute('data-gallery-index');
+            if (debugMode) console.log(`[Step4 gallery container click] bounding-match index: ${idx}`);
+            openLightboxAt(parseInt(idx || '0', 10));
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Gallery handler error', err);
+      }
+    };
+
+    // use capture to detect clicks early
+    document.addEventListener('click', handler, true);
+    return () => document.removeEventListener('click', handler, true);
+  }, [galleryRef, openLightboxAt, debugMode]);
+
   return (
     <motion.div className="space-y-8" initial="hidden" animate="show" variants={fadeIn}>
       {/* Product header */}
       <div className="flex flex-col md:flex-row gap-6">
         <div className="w-full md:w-1/2">
           {featuredImage ? (
-            <SecureImage
-              imagePath={featuredImage}
-              productCode={productId}
-              alt={productDetails.name}
-              className="w-full h-64 object-cover rounded-medium"
-            />
+            <div data-gallery-index={0} className="cursor-pointer" onClick={() => { if (debugMode) console.log('[Step4] featured image clicked index: 0'); openLightboxAt(0); }} onMouseEnter={() => { prefetchImage(featuredImage, productId).catch(()=>{}); }}>
+                <SecureImage
+                  imagePath={featuredImage}
+                  productCode={productId}
+                  alt={productDetails.name}
+                  className="w-full h-64 object-cover rounded-medium"
+                  onClick={() => openLightboxAt(0)}
+                  loading="eager"
+                  fetchPriority="high"
+                />
+            </div>
           ) : (
             <div className="w-full h-64 bg-gray-100 rounded-medium flex items-center justify-center">
               <Icon icon="lucide:image" width={48} className="text-gray-400" />
@@ -168,14 +244,16 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
         <Tab key="gallery" title="Image Gallery">
           <Card>
             <CardBody className="p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div ref={galleryRef} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {productDetails.imageGallery.map((image, index) => (
-                  <div key={index} className="aspect-square">
+                  <div key={index} data-gallery-index={index} className="aspect-square cursor-pointer pointer-events-auto" onClick={(e) => { if (debugMode) console.log(`[Step4 wrapper click] index: ${index}`); e.stopPropagation(); openLightboxAt(index); }} onMouseEnter={() => { prefetchImage(image, productId).catch(()=>{}); }}>
                     <SecureImage
                       imagePath={image}
                       productCode={productId}
                       alt={`${productDetails.name} - Image ${index + 1}`}
                       className="w-full h-full object-cover rounded-medium"
+                      onClick={() => openLightboxAt(index)}
+                      loading="lazy"
                     />
                   </div>
                 ))}
@@ -183,6 +261,8 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
             </CardBody>
           </Card>
         </Tab>
+
+        {/* Lightbox overlay (moved out of Tabs to ensure it's always rendered) */}
 
         <Tab key="files" title="Downloads">
           <Card>
@@ -267,6 +347,15 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
           </Card>
         </Tab>
       </Tabs>
+
+      {/* Ensure Lightbox is rendered outside of Tabs so it's mounted regardless of active Tab */}
+      <Lightbox
+        images={productDetails.imageGallery}
+        productCode={productId}
+        open={lightboxOpen}
+        initialIndex={lightboxIndex}
+        onClose={closeLightbox}
+      />
     </motion.div>
   );
 };
@@ -360,7 +449,7 @@ function getFileNameFromUrl(url: string, displayName: string): string {
       return decodeURIComponent(filename);
     }
   } catch (error) {
-    console.error("Error extracting filename from URL:", error);
+    if (debugMode) console.error("Error extracting filename from URL:", error);
   }
 
   // Fallback: use display name and try to add extension from URL

@@ -231,6 +231,20 @@ class DatabaseManager {
 		return $result ? absint( $result ) : null;
 	}
 
+	/**
+	 * Get all product_data keys that start with a given prefix
+	 * Returns an array of keys (strings).
+	 */
+	public function get_product_data_keys_by_prefix( $prefix = 'stepper_data_builder_' ) {
+		$sql = $this->wpdb->prepare(
+			"SELECT data_key FROM {$this->table_prefix}product_data WHERE data_key LIKE %s",
+			$prefix . '%'
+		);
+
+		$results = $this->wpdb->get_col( $sql );
+		return is_array( $results ) ? $results : array();
+	}
+
 	public function get_product_data( $id = 1, $key = 'stepper_form_data' ) {
 
 		if ( 'stepper_form_data' !== $key ) {

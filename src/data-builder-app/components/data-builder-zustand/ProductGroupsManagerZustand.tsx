@@ -201,7 +201,11 @@ export const ProductGroupsManagerZustand: React.FC = () => {
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start w-full">
                     <div className="flex items-center gap-3">
-                      <Avatar icon={<Icon icon={group.icon} width={20} />} className="bg-primary-100 text-primary-800" size="sm" />
+                      <Avatar
+                        icon={<Icon icon={group.icon} width={20} style={{ stroke: 'currentColor', fill: 'currentColor' }} />}
+                        className="bg-primary-100 text-primary-800"
+                        size="sm"
+                      />
                       <div>
                         <h4 className="text-lg font-semibold">{group.name}</h4>
                         <Chip size="sm" variant="flat" color="primary">

@@ -373,32 +373,98 @@ export const ProductRangesManager: React.FC = () => {
             // Update grouped items
             Object.keys(newGrouped).forEach(groupName => {
               newGrouped[groupName] = newGrouped[groupName].map(item => {
-                // Build expected folder path: GroupName/RangeName/
-                const groupNameNorm = groupName.toLowerCase().replace(/\/+$/, '');
-                const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '');
-                const expectedPath = groupNameNorm + '/' + rangeNameNorm + '/';
-                const existenceData = result.results.find((r: any) => {
-                  // Normalize backend folder_path or id
-                  const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/, '');
-                  return folderPath === (groupNameNorm + '/' + rangeNameNorm);
+                // Build expected folder path: GroupName/RangeName
+                const groupNameNorm = groupName.toLowerCase().replace(/\/+$/, '').trim();
+                const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '').trim();
+                const expectedPath = `${groupNameNorm}/${rangeNameNorm}`;
+
+                // Try exact match first
+                const exactMatch = result.results.find((r: any) => {
+                  const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/g, '').trim();
+                  return folderPath === expectedPath || folderPath === expectedPath + '/';
                 });
+
+                // Gather diagnostics if missing
+                if (!exactMatch) {
+                  // Normalize helper for a result entry path
+                  const normalize = (r: any) => ((r.folder_path || r.folderPath || r.folderPath || r.id || '') + '')
+                    .toLowerCase()
+                    .replace(/\/+$/g, '')
+                    .trim();
+
+                  // Candidate entries that contain the range or group name anywhere
+                  const candidates = result.results
+                    .map((r: any) => ({ path: normalize(r), raw: r }))
+                    .filter((c: any) => c.path.includes(rangeNameNorm) || c.path.includes(groupNameNorm));
+
+                  // Top-level entries that look like the range name (e.g. 'banksia/')
+                  const topLevelMatches = result.results
+                    .map((r: any) => ({ path: normalize(r), fileCount: r.fileCount ?? r.file_count ?? 0, raw: r }))
+                    .filter((c: any) => c.path === rangeNameNorm || c.path === rangeNameNorm + '/');
+
+                  // pluralization check
+                  const pluralGroup = groupNameNorm.endsWith('s') ? groupNameNorm.slice(0, -1) : groupNameNorm + 's';
+                  const pluralMatch = result.results.find((r: any) => normalize(r).startsWith(pluralGroup + '/'));
+
+                  // Short, non-spammy diagnostic summary for production builds
+                  const candidatePaths = candidates.slice(0, 3).map((c: any) => c.path).join(', ');
+                  if (candidates.length || topLevelMatches.length || pluralMatch) {
+                    if ((window as any).__URBANA_DEBUG) {
+                      console.warn(
+                        `[DO Sync] MISSING: '${item.name}' expected '${expectedPath}'. ` +
+                        `Found ${candidates.length + topLevelMatches.length} close matches in DO (sample: ${candidatePaths || 'none'})` +
+                        (pluralMatch ? `; possible pluralization mismatch (DO contains '${normalize(pluralMatch)}')` : '')
+                      );
+                    }
+                  } else {
+                    if ((window as any).__URBANA_DEBUG) {
+                      console.warn(`[DO Sync] MISSING: '${item.name}' expected '${expectedPath}' — no nearby matches in DO (checked ${result.results.length} entries).`);
+                    }
+                  }
+                } else {
+                  if ((window as any).__URBANA_DEBUG) {
+                    console.log(`[DO Sync] FOUND: range '${item.name}' expected '${expectedPath}' → matched DO folder '${(exactMatch.folder_path || exactMatch.id)}' (files: ${exactMatch.fileCount || 0})`);
+                  }
+                }
+
                 return {
                   ...item,
-                  exists: existenceData ? existenceData.exists : false
+                  exists: exactMatch ? exactMatch.exists : false
                 };
               });
             });
 
             // Update ungrouped items
             newUngrouped.forEach((item, index) => {
-              // For ungrouped, just try to match by range name (could be improved if group known)
-              const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '');
-              const existenceData = result.results.find((r: any) => {
-                const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/, '');
-                return folderPath.endsWith('/' + rangeNameNorm);
+              const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '').trim();
+
+              // Try to find any folder path that ends with '/rangeName'
+              const exactMatch = result.results.find((r: any) => {
+                const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/g, '').trim();
+                return folderPath.endsWith('/' + rangeNameNorm) || folderPath === rangeNameNorm;
               });
-              if (existenceData) {
-                newUngrouped[index] = { ...item, exists: existenceData.exists };
+
+              if (exactMatch) {
+                if ((window as any).__URBANA_DEBUG) {
+                  console.log(`[DO Sync] FOUND (ungrouped): range '${item.name}' matched DO folder '${(exactMatch.folder_path || exactMatch.id)}'`);
+                }
+                newUngrouped[index] = { ...item, exists: exactMatch.exists };
+                return;
+              }
+
+              // If no exact match, log nearby candidates and reason
+              const candidates = result.results
+                .map((r: any) => ({ path: (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/g, '').trim(), raw: r }))
+                .filter((c: any) => c.path.includes(rangeNameNorm));
+
+              if (candidates.length > 0) {
+                if ((window as any).__URBANA_DEBUG) {
+                  console.warn(`[DO Sync] MISSING (ungrouped): range '${item.name}' — partial matches in DO: ${candidates.map((c: any) => c.path).slice(0,5).join(', ')}${candidates.length > 5 ? ' (and more)' : ''}`);
+                }
+              } else {
+                if ((window as any).__URBANA_DEBUG) {
+                  console.warn(`[DO Sync] MISSING (ungrouped): range '${item.name}' — no entries containing '${rangeNameNorm}' found in DO results.`);
+                }
               }
             });
 
@@ -408,6 +474,23 @@ export const ProductRangesManager: React.FC = () => {
             };
           });
         }
+      } else {
+        // Non-OK response (e.g. 400) - mark all items as missing so UI doesn't stay in 'Checking...'
+        console.error('[DO Sync] check-folders returned HTTP', response.status);
+        setSyncItemsGrouped(prev => {
+          const newGrouped = { ...prev.grouped };
+          const newUngrouped = [...prev.ungrouped];
+
+          Object.keys(newGrouped).forEach(groupName => {
+            newGrouped[groupName] = newGrouped[groupName].map(item => ({ ...item, exists: false }));
+          });
+
+          newUngrouped.forEach((item, index) => {
+            newUngrouped[index] = { ...item, exists: false };
+          });
+
+          return { grouped: newGrouped, ungrouped: newUngrouped };
+        });
       }
     } catch (error) {
       console.error('❌ Failed to check folder existence:', error);
@@ -429,12 +512,12 @@ export const ProductRangesManager: React.FC = () => {
     // Process grouped ranges
     Object.entries(grouped).forEach(([groupName, ranges]) => {
       syncGrouped[groupName] = ranges.map(range => ({
-        id: range.id,
-        name: range.name,
-        type: 'range' as const,
-        exists: false,
-        checked: false,
-      }));
+          id: range.id,
+          name: range.name,
+          type: 'range' as const,
+          exists: undefined as unknown as boolean | undefined,
+          checked: false,
+        }));
     });
 
     // Process ungrouped ranges
@@ -442,7 +525,7 @@ export const ProductRangesManager: React.FC = () => {
       id: range.id,
       name: range.name,
       type: 'range' as const,
-      exists: false,
+      exists: undefined as unknown as boolean | undefined,
       checked: false,
     }));
 
@@ -454,6 +537,49 @@ export const ProductRangesManager: React.FC = () => {
     // Check folder existence after state is set
     checkFolderExistence();
   }, [productRanges, relationships, productGroups]); // Removed checkFolderExistence from deps
+
+  // Listen for admin-triggered scan results and update in-place (no reload required)
+  React.useEffect(() => {
+    const handler = (ev: any) => {
+      if (!ev || !ev.detail || !ev.detail.results) return;
+      const result = ev.detail;
+      // Received scan results via admin scan — update UI state. No debug logs in production.
+
+      setSyncItemsGrouped(prev => {
+        const newGrouped = { ...prev.grouped };
+        const newUngrouped = [ ...prev.ungrouped ];
+
+        Object.keys(newGrouped).forEach(groupName => {
+          newGrouped[groupName] = newGrouped[groupName].map(item => {
+            const groupNameNorm = groupName.toLowerCase().replace(/\/+$/, '').trim();
+            const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '').trim();
+            const expectedPath = `${groupNameNorm}/${rangeNameNorm}`;
+
+            const exactMatch = result.results.find((r: any) => {
+              const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/g, '').trim();
+              return folderPath === expectedPath || folderPath === expectedPath + '/';
+            });
+
+            return { ...item, exists: exactMatch ? exactMatch.exists : false };
+          });
+        });
+
+        newUngrouped.forEach((item, index) => {
+          const rangeNameNorm = (item.name || '').toLowerCase().replace(/\/+$/, '').trim();
+          const exactMatch = result.results.find((r: any) => {
+            const folderPath = (r.folder_path || r.id || '').toLowerCase().replace(/\/+$/g, '').trim();
+            return folderPath.endsWith('/' + rangeNameNorm) || folderPath === rangeNameNorm;
+          });
+          if (exactMatch) newUngrouped[index] = { ...item, exists: exactMatch.exists };
+        });
+
+        return { grouped: newGrouped, ungrouped: newUngrouped };
+      });
+    };
+
+    window.addEventListener('urbana:do-scan-completed', handler as EventListener);
+    return () => window.removeEventListener('urbana:do-scan-completed', handler as EventListener);
+  }, []);
 
   const handleItemCheck = (id: string, checked: boolean) => {
     setSyncItemsGrouped(prev => {
@@ -783,15 +909,18 @@ export const ProductRangesManager: React.FC = () => {
                                     <Chip
                                       size="sm"
                                       variant="flat"
-                                      color={range.exists ? "success" : "warning"}
+                                      color={range.exists === true ? "success" : range.exists === false ? "warning" : "default"}
                                       startContent={
-                                        <Icon 
-                                          icon={range.exists ? "lucide:check-circle" : "lucide:alert-circle"} 
-                                          width={14} 
-                                        />
+                                        range.exists === undefined ? (
+                                          <Icon icon="lucide:loader-2" width={12} className="animate-spin" />
+                                        ) : range.exists ? (
+                                          <Icon icon="lucide:check-circle" width={14} />
+                                        ) : (
+                                          <Icon icon="lucide:alert-circle" width={14} />
+                                        )
                                       }
                                     >
-                                      {range.exists ? "Exists" : "Missing"}
+                                      {range.exists === undefined ? "Checking..." : range.exists ? "Exists" : "Missing"}
                                     </Chip>
                                   </div>
                                 </CardHeader>

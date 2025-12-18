@@ -235,7 +235,10 @@ export const RelationshipsManagerZustand: React.FC = () => {
                     key={group.id}
                     title={
                       <div className="flex items-center gap-3">
-                        <Avatar icon={<Icon icon="lucide:folder" width={16} />} className="w-6 h-6 bg-primary-100 text-primary-600" />
+                        <Avatar
+                          icon={<Icon icon="lucide:folder" width={16} style={{ stroke: 'currentColor', fill: 'currentColor' }} />}
+                          className="w-6 h-6 bg-primary-100 text-primary-600"
+                        />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">{group.name}</span>
@@ -255,7 +258,7 @@ export const RelationshipsManagerZustand: React.FC = () => {
                           <div key={range.id} className="border-l-2 border-gray-200 pl-4">
                             <div className="flex items-center gap-3 mb-2">
                               <Avatar
-                                icon={<Icon icon="lucide:grid-3x3" width={16} />}
+                                icon={<Icon icon="lucide:grid-3x3" width={16} style={{ stroke: 'currentColor', fill: 'currentColor' }} />}
                                 className="w-6 h-6 bg-secondary-100 text-secondary-600"
                               />
                               <div className="flex-1">

@@ -25,11 +25,18 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const debugMode = typeof window !== 'undefined' && ((window as any).urbanaDebugMode || (window as any).urbanaAdmin?.debugMode || (window as any).urbanaPublic?.debugMode || false);
       return (
         <div className="p-8 bg-danger/5 border border-danger/10 rounded-medium text-center">
           <h2 className="text-lg font-semibold text-danger mb-2">Something went wrong</h2>
           <p className="text-sm text-default-600 mb-4">An unexpected error occurred while rendering this application.</p>
           <pre className="text-xs text-default-400 whitespace-pre-wrap">{this.state.error?.message}</pre>
+          {debugMode && this.state.error?.stack && (
+            <details className="mt-3 text-left text-xs text-default-400">
+              <summary className="cursor-pointer">View stack trace</summary>
+              <pre className="whitespace-pre-wrap">{this.state.error?.stack}</pre>
+            </details>
+          )}
         </div>
       );
     }

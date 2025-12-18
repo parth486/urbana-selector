@@ -3,6 +3,8 @@ import { Tabs, Tab, Card, CardBody, Accordion, AccordionItem, Button } from "@he
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import SecureImage, { prefetchImage } from "../SecureImage";
+import ContactModal from "../ContactModal";
+import { Step6ContactInfo } from "../steps/Step6ContactInfo";
 import Lightbox from "../Lightbox";
 
 interface Step4Props {
@@ -25,6 +27,22 @@ interface ProductDetail {
 export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) => {
   const productDetails = data.productDetails[productId];
   const debugMode = (window as any).urbanaDebugMode || false;
+
+  // Sanity check imports at runtime — log if any expected component is undefined.
+  useEffect(() => {
+    try {
+      const missing: string[] = [];
+      if (!SecureImage) missing.push('SecureImage');
+      if (!Lightbox) missing.push('Lightbox');
+      if (!ContactModal) missing.push('ContactModal');
+      if (!Icon) missing.push('Icon');
+      if (missing.length > 0) {
+        console.error('[Step4] Missing imports detected:', missing);
+      }
+    } catch (e) {
+      // swallow
+    }
+  }, []);
 
   // Download handler
   const handleDownload = useCallback(async (fileUrl: string, fileName: string) => {
@@ -121,6 +139,25 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
   }, [lightboxOpen, lightboxIndex]);
 
   const closeLightbox = () => setLightboxOpen(false);
+  const [enquireOpen, setEnquireOpen] = useState(false);
+  const [enquireDiagnostic, setEnquireDiagnostic] = useState<string | null>(null);
+
+  const openEnquire = () => {
+    // User-triggered: open the enquiry modal
+    try {
+      if (typeof ContactModal !== 'function') {
+        setEnquireDiagnostic('ContactModal is not a function - check import/export');
+        try { window.__urbana_diag = window.__urbana_diag || { errors: [], events: [] }; window.__urbana_diag.events.push({ type: 'contact_modal_invalid', value: String(ContactModal) }); } catch (e) {}
+        return;
+      }
+    } catch (err) {
+      try { window.__urbana_diag = window.__urbana_diag || { errors: [], events: [] }; window.__urbana_diag.errors.push({ type: 'step4_open_enquire_error', message: String(err && err.message) }); } catch (e) {}
+    }
+
+    setEnquireDiagnostic(null);
+    setEnquireOpen(true);
+  };
+  const closeEnquire = () => setEnquireOpen(false);
 
   useEffect(() => {
     if (debugMode) console.log('[Step4] useEffect mount — Step4ProductContent mounted', { galleryRefPresent: !!galleryRef.current });
@@ -216,8 +253,53 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
               <span>10 Year Warranty</span>
             </div>
           </div>
+          <div className="mt-4">
+            <Button
+              color="primary"
+              size="md"
+              onPress={openEnquire}
+              endContent={<Icon icon="lucide:arrow-right" width={18} />}
+              aria-label="Enquire Now"
+            >
+              Enquire Now
+            </Button>
+          </div>
         </div>
       </div>
+
+      {(() => {
+        if (!enquireOpen) return null;
+
+        // Defensive check: React will throw a runtime error if the element type is invalid
+        // (e.g. undefined, null, or a non-component object). Detect and render a helpful
+        // diagnostic UI here instead of letting React throw a minified exception.
+        try {
+          if (ContactModal == null || (typeof ContactModal !== 'function' && typeof ContactModal !== 'object')) {
+            console.error('[Step4] ContactModal invalid at render', ContactModal);
+            // Record diagnostic for server-side or global inspection
+            try { window.__urbana_diag = window.__urbana_diag || { errors: [] }; window.__urbana_diag.errors.push({ type: 'contact_modal_invalid', value: String(ContactModal) }); } catch {}
+            return (
+              <div className="p-4 bg-warning/5 border border-warning/10 rounded-medium">
+                <h4 className="font-semibold mb-2">Enquiry form failed to open</h4>
+                <p className="text-sm text-default-600">The enquiry form component is not available. This is likely a build/import issue. See the console for diagnostic details.</p>
+                <pre className="text-xs mt-2">{JSON.stringify({ ContactModal: String(ContactModal), typeofContactModal: typeof ContactModal }, null, 2)}</pre>
+              </div>
+            );
+          }
+
+          return <ContactModal open={enquireOpen} onClose={closeEnquire} />;
+        } catch (err: any) {
+          console.error('[Step4] Error mounting ContactModal', err, err && err.stack);
+          try { window.__urbana_diag = window.__urbana_diag || { errors: [] }; window.__urbana_diag.errors.push({ type: 'contact_modal_mount_error', message: String(err && err.message), stack: err && err.stack }); } catch {}
+          return (
+            <div className="p-4 bg-warning/5 border border-warning/10 rounded-medium">
+              <h4 className="font-semibold mb-2">Enquiry form failed to open</h4>
+              <p className="text-sm text-default-600">An error occurred while opening the enquiry form. See console for details.</p>
+              <pre className="text-xs mt-2">{String(err && err.message)}</pre>
+            </div>
+          );
+        }
+      })()}
 
       {/* Product content tabs */}
       <Tabs aria-label="Product information tabs" variant="underlined" color="primary">

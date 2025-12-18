@@ -76,6 +76,7 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
     mediaFrame.open();
   }, [imageGallery, onImageGalleryChange]);
 
+
   const fetchFromFolder = useCallback(async () => {
     if (!productCode || !category || !range) {
       console.error("Missing product information for folder fetch");
@@ -148,10 +149,10 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
 
       <CardBody className="space-y-4">
         {imageGallery.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="flex flex-wrap justify-center items-start gap-4">
             {imageGallery.map((url, index) => (
-              <div key={index} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden border-2 border-default-200">
+              <div key={index} className="relative group h-full w-40 sm:w-48 md:w-56 lg:w-64 flex flex-col items-stretch">
+                <div className="aspect-[4/3] rounded-lg overflow-hidden border-2 border-default-200">
                   {url ? (
                     <SecureImage
                       imagePath={url}
@@ -167,7 +168,7 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
 
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Dropdown>
-                      <DropdownTrigger>
+                        <DropdownTrigger>
                         <Button isIconOnly size="sm" variant="solid" color="default" className="bg-black/50 text-white">
                           <Icon icon="lucide:more-vertical" width={16} />
                         </Button>
@@ -220,6 +221,7 @@ export const ImageGalleryManager: React.FC<ImageGalleryManagerProps> = ({
           </Button>
         </div>
       </CardBody>
+    
     </Card>
   );
 };

@@ -4,6 +4,26 @@
   @apply w-full;
 }
 
+/* Scoped safe defaults — some admin themes / host CSS set a broad rule that clears many
+   --tw-* variables which breaks Tailwind transform utilities (eg. translate-x/y). Set
+   safe defaults inside our builder scope so utilities continue to work reliably. */
+.urbana-builder-page,
+.urbana-modal {
+  /* transforms */
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+
+  /* ring / shadow defaults (non-destructive) */
+  --tw-ring-offset-width: 0px;
+  --tw-ring-offset-color: #fff;
+  --tw-ring-color: rgba(59,130,246,0.5);
+}
+
 .manager-section {
   @apply p-6 space-y-6;
 }
@@ -30,4 +50,12 @@
 
 .preview-section {
   @apply  rounded-lg p-4 font-mono text-sm overflow-auto max-h-96;
+}
+
+/* Safety: ensure svg icons inside our admin Data Builder are visible even when global admin CSS
+   overrides some Tailwind CSS variables (some hosts set empty --tw-* variables). This sets
+   an explicit fallback color plus ensures svg paths use currentColor for stroke/fill. */
+.urbana-builder-page .avatar svg {
+  fill: currentColor !important;
+  stroke: currentColor !important;
 }

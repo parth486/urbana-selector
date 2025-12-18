@@ -310,7 +310,11 @@ class DigitalOceanSpaces {
 
 		// Always generate signed URLs for private access
 		$signed_url = $this->generate_signed_url( $key, 3600 ); // 1 hour expiration
-		error_log( "DigitalOcean: Generated signed URL for key '{$key}' -> '{$signed_url}'" );
+		
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		if ( $debug_mode ) {
+			error_log( "DigitalOcean: Generated signed URL for key '{$key}' -> '{$signed_url}'" );
+		}
 		
 		return $signed_url;
 	}
@@ -461,6 +465,106 @@ class DigitalOceanSpaces {
 			'data' => $image_data,
 			'content_type' => $content_type
 		);
+	}
+
+	/**
+	 * Generate a presigned URL for accessing a private file from DigitalOcean Spaces
+	 * This method creates a time-limited URL that can be used to access private objects
+	 * 
+	 * @param string $key The object key (path) to access
+	 * @param int $expiration_seconds The number of seconds the URL should be valid (default: 3600 = 1 hour)
+	 * @return array Array with 'success', 'url', and 'expires_at' keys
+	 */
+	public function generate_presigned_url( $key, $expiration_seconds = 3600 ) {
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		
+		if ( ! $this->is_configured() ) {
+			return array(
+				'success' => false,
+				'error' => 'DigitalOcean Spaces not configured'
+			);
+		}
+
+		try {
+			// Generate timestamps
+			$now = time();
+			$expires = $now + $expiration_seconds;
+			$date = gmdate( 'Ymd\THis\Z', $now );
+			$date_stamp = gmdate( 'Ymd', $now );
+			
+			$host = "{$this->bucket_name}.{$this->region}.digitaloceanspaces.com";
+			
+			// URL encode the path segments
+			$path_segments = explode( '/', trim( $key, '/' ) );
+			$encoded_segments = array_map( 'rawurlencode', $path_segments );
+			$canonical_uri = '/' . implode( '/', $encoded_segments );
+			
+			// Build credential scope
+			$credential_scope = "{$date_stamp}/{$this->region}/s3/aws4_request";
+			
+			// Build canonical query string for presigned URL
+			$algorithm = 'AWS4-HMAC-SHA256';
+			$credential = "{$this->access_key}/{$credential_scope}";
+			
+			$query_params = array(
+				'X-Amz-Algorithm' => $algorithm,
+				'X-Amz-Credential' => $credential,
+				'X-Amz-Date' => $date,
+				'X-Amz-Expires' => $expiration_seconds,
+				'X-Amz-SignedHeaders' => 'host',
+			);
+			
+			// Sort query parameters
+			ksort( $query_params );
+			
+			// Build canonical query string
+			$canonical_query_string = '';
+			foreach ( $query_params as $key_param => $value_param ) {
+				if ( ! empty( $canonical_query_string ) ) {
+					$canonical_query_string .= '&';
+				}
+				$canonical_query_string .= rawurlencode( $key_param ) . '=' . rawurlencode( $value_param );
+			}
+			
+			// Build canonical request for signature
+			$payload_hash = 'UNSIGNED-PAYLOAD';
+			$canonical_headers = "host:{$host}\n";
+			$signed_headers = 'host';
+			
+			$canonical_request = "GET\n{$canonical_uri}\n{$canonical_query_string}\n{$canonical_headers}\n{$signed_headers}\n{$payload_hash}";
+			
+			// Create string to sign
+			$string_to_sign = "{$algorithm}\n{$date}\n{$credential_scope}\n" . hash( 'sha256', $canonical_request );
+			
+			// Calculate signature
+			$signing_key = $this->get_signature_key( $this->secret_key, $date_stamp, $this->region, 's3' );
+			$signature = hash_hmac( 'sha256', $string_to_sign, $signing_key );
+			
+			// Build final presigned URL
+			$presigned_url = "https://{$host}{$canonical_uri}?{$canonical_query_string}&X-Amz-Signature=" . rawurlencode( $signature );
+			
+			if ( $debug_mode ) {
+				error_log( 'DigitalOceanSpaces: Generated presigned URL for: ' . $key );
+				error_log( 'DigitalOceanSpaces: Host: ' . $host );
+				error_log( 'DigitalOceanSpaces: Canonical URI: ' . $canonical_uri );
+			}
+			
+			return array(
+				'success' => true,
+				'url' => $presigned_url,
+				'expires_at' => gmdate( 'Y-m-d H:i:s', $expires ),
+				'expires_in_seconds' => $expiration_seconds
+			);
+			
+		} catch ( \Exception $e ) {
+			if ( $debug_mode ) {
+				error_log( 'DigitalOceanSpaces: Exception in generate_presigned_url: ' . $e->getMessage() );
+			}
+			return array(
+				'success' => false,
+				'error' => $e->getMessage()
+			);
+		}
 	}
 
 	public function organize_objects_by_structure( $objects ) {
@@ -1007,63 +1111,68 @@ class DigitalOceanSpaces {
 		}
 
 		try {
-			// Ensure folder path ends with /
-			$folder_path = rtrim( $folder_path, '/' ) . '/';
-			
-			// Create a .keep file to represent the folder
-			$placeholder_key = $folder_path . '.keep';
-			$path = '/' . $this->bucket_name . '/' . ltrim( $placeholder_key, '/' );
-			$url = $this->endpoint . $path;
+		// Ensure folder path ends with /
+		$folder_path = rtrim( $folder_path, '/' ) . '/';
+		
+		// Create a .keep file to represent the folder
+		$placeholder_key = $folder_path . '.keep';
+		$path = '/' . $this->bucket_name . '/' . ltrim( $placeholder_key, '/' );
+		$url = $this->endpoint . $path;
 
-			// Log the request details for debugging
+		// Log the request details for debugging
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		if ( $debug_mode ) {
 			error_log( "Urbana: Creating folder at path: {$folder_path}" );
 			error_log( "Urbana: PUT URL: {$url}" );
 			error_log( "Urbana: Bucket: {$this->bucket_name}" );
 			error_log( "Urbana: Region: {$this->region}" );
 			error_log( "Urbana: Endpoint: {$this->endpoint}" );
+		}
 
-			// Empty content for the placeholder file
-			$file_content = '# This file maintains the folder structure in Digital Ocean Spaces';
+		// Empty content for the placeholder file
+		$file_content = '# This file maintains the folder structure in Digital Ocean Spaces';
 
-			$headers = $this->get_auth_headers( 'PUT', $path );
-			$headers['Content-Type'] = 'text/plain';
-			$headers['Content-Length'] = strlen( $file_content );
+		$headers = $this->get_auth_headers( 'PUT', $path );
+		$headers['Content-Type'] = 'text/plain';
+		$headers['Content-Length'] = strlen( $file_content );
 
-			$response = wp_remote_request(
-				$url,
-				array(
-					'method'  => 'PUT',
-					'headers' => $headers,
-					'body'    => $file_content,
-					'timeout' => 60,
-				)
-			);
+		$response = wp_remote_request(
+			$url,
+			array(
+				'method'  => 'PUT',
+				'headers' => $headers,
+				'body'    => $file_content,
+				'timeout' => 60,
+			)
+		);
 
-			if ( is_wp_error( $response ) ) {
-				$error_message = $response->get_error_message();
+		if ( is_wp_error( $response ) ) {
+			$error_message = $response->get_error_message();
+			if ( $debug_mode ) {
 				error_log( "Urbana: WP Error creating folder: {$error_message}" );
-				
-				return array(
-					'success' => false,
-					'message' => 'Folder creation failed: ' . $error_message,
-					'error_details' => array(
-						'type' => 'wp_error',
-						'url' => $url,
-						'path' => $path,
-					),
-				);
 			}
-
-			$status_code = wp_remote_retrieve_response_code( $response );
-			$response_body = wp_remote_retrieve_body( $response );
 			
-			// Log response details
+			return array(
+				'success' => false,
+				'message' => 'Folder creation failed: ' . $error_message,
+				'error_details' => array(
+					'type' => 'wp_error',
+					'url' => $url,
+					'path' => $path,
+				),
+			);
+		}
+
+		$status_code = wp_remote_retrieve_response_code( $response );
+		$response_body = wp_remote_retrieve_body( $response );
+		
+		// Log response details
+		if ( $debug_mode ) {
 			error_log( "Urbana: Response status: {$status_code}" );
 			if ( $status_code !== 200 && $status_code !== 201 ) {
 				error_log( "Urbana: Response body: " . substr( $response_body, 0, 500 ) );
 			}
-
-			if ( $status_code === 200 || $status_code === 201 ) {
+		}			if ( $status_code === 200 || $status_code === 201 ) {
 				return array(
 					'success' => true,
 					'message' => 'Folder created successfully',
@@ -1084,7 +1193,10 @@ class DigitalOceanSpaces {
 			}
 		} catch ( \Exception $e ) {
 			$error_message = $e->getMessage();
-			error_log( "Urbana: Exception creating folder: {$error_message}" );
+			$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+			if ( $debug_mode ) {
+				error_log( "Urbana: Exception creating folder: {$error_message}" );
+			}
 			
 			return array(
 				'success' => false,
@@ -1127,20 +1239,29 @@ class DigitalOceanSpaces {
 	 * Create folder structure for a product range
 	 */
 	public function create_range_folders( $group_name, $range_name, $base_path = '' ) {
-		error_log( "DigitalOceanSpaces: create_range_folders called - group: '{$group_name}', range: '{$range_name}', base_path: '{$base_path}'" );
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		if ( $debug_mode ) {
+			error_log( "DigitalOceanSpaces: create_range_folders called - group: '{$group_name}', range: '{$range_name}', base_path: '{$base_path}'" );
+		}
 		
 		$sanitized_group = $this->sanitize_path_segment( $group_name );
 		$sanitized_range = $this->sanitize_path_segment( $range_name );
 		$range_path = empty( $base_path ) ? $sanitized_group . '/' . $sanitized_range : $base_path . '/' . $sanitized_group . '/' . $sanitized_range;
 		
-		error_log( "DigitalOceanSpaces: sanitized group: '{$sanitized_group}', range: '{$sanitized_range}', final path: '{$range_path}'" );
+		if ( $debug_mode ) {
+			error_log( "DigitalOceanSpaces: sanitized group: '{$sanitized_group}', range: '{$sanitized_range}', final path: '{$range_path}'" );
+		}
 		
 		$results = array();
 		
 		// Create range folder
-		error_log( "DigitalOceanSpaces: Creating folder at path: " . $range_path );
+		if ( $debug_mode ) {
+			error_log( "DigitalOceanSpaces: Creating folder at path: " . $range_path );
+		}
 		$result = $this->create_folder( $range_path );
-		error_log( "DigitalOceanSpaces: create_folder result: " . wp_json_encode( $result ) );
+		if ( $debug_mode ) {
+			error_log( "DigitalOceanSpaces: create_folder result: " . wp_json_encode( $result ) );
+		}
 		
 		$results[] = array(
 			'path' => $range_path,
@@ -1149,7 +1270,9 @@ class DigitalOceanSpaces {
 		);
 
 		$success = count( array_filter( $results, function( $r ) { return $r['result']['success']; } ) ) > 0;
-		error_log( "DigitalOceanSpaces: create_range_folders final success: " . ( $success ? 'true' : 'false' ) );
+		if ( $debug_mode ) {
+			error_log( "DigitalOceanSpaces: create_range_folders final success: " . ( $success ? 'true' : 'false' ) );
+		}
 
 		return array(
 			'success' => $success,
@@ -1213,8 +1336,10 @@ class DigitalOceanSpaces {
 	 * Check if folders exist for groups, ranges, or products
 	 */
 	public function check_folders_exist( $items, $type ) {
-		// GOD_DEBUG: Start check_folders_exist
-		error_log('GOD_DEBUG: check_folders_exist called with type: ' . $type . ' and items: ' . print_r($items, true));
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		if ( $debug_mode ) {
+			error_log('GOD_DEBUG: check_folders_exist called with type: ' . $type . ' and items: ' . print_r($items, true));
+		}
 		if ( ! $this->is_configured() ) {
 			return array(
 				'success' => false,
@@ -1253,10 +1378,13 @@ class DigitalOceanSpaces {
 				
 				// Check if the folder exists by looking for the .keep file
 				$keep_file_path = $folder_path . '.keep';
-				// GOD_DEBUG: About to check_object_exists for: ' . $keep_file_path
-				error_log('GOD_DEBUG: Checking object existence for: ' . $keep_file_path);
+				if ( $debug_mode ) {
+					error_log('GOD_DEBUG: Checking object existence for: ' . $keep_file_path);
+				}
 				$exists = $this->check_object_exists( $keep_file_path );
-				error_log('GOD_DEBUG: check_object_exists result for ' . $keep_file_path . ': ' . var_export($exists, true));
+				if ( $debug_mode ) {
+					error_log('GOD_DEBUG: check_object_exists result for ' . $keep_file_path . ': ' . var_export($exists, true));
+				}
 				
 				$results[ $item['id'] ] = array(
 					'exists' => $exists,
@@ -1269,7 +1397,9 @@ class DigitalOceanSpaces {
 				);
 			}
 			
-			error_log('GOD_DEBUG: check_folders_exist results: ' . print_r($results, true));
+			if ( $debug_mode ) {
+				error_log('GOD_DEBUG: check_folders_exist results: ' . print_r($results, true));
+			}
 			return array(
 				'success' => true,
 				'results' => $results,
@@ -1526,13 +1656,66 @@ class DigitalOceanSpaces {
 		   // Strategy 5: Case-insensitive check against all folder names in Spaces
 		   $all_folders = $this->list_all_folder_names();
 		   $target_lower = strtolower(rtrim($folder_path, '/'));
-		   error_log("[DO SYNC DEBUG] Fallback case-insensitive check: Target={$folder_path} (lower={$target_lower})");
-		   error_log("[DO SYNC DEBUG] All folders from Spaces: " . print_r($all_folders, true));
+		   // Precompute sanitized form of target for robust matching
+		   $target_sanitized = strtolower( $this->sanitize_folder_path( $folder_path ) );
+		   error_log("[DO SYNC DEBUG] ============================================");
+		   error_log("[DO SYNC DEBUG] Checking folder: {$folder_path}");
+		   error_log("[DO SYNC DEBUG] Target (lower): {$target_lower}");
+		   error_log("[DO SYNC DEBUG] Total folders: " . count($all_folders));
+		   
+		   $match_found = false;
 		   foreach ($all_folders as $existing_folder) {
 			   $existing_lower = strtolower(rtrim($existing_folder, '/'));
-			   error_log("[DO SYNC DEBUG] Compare: Existing={$existing_folder} (lower={$existing_lower}) vs Target lower={$target_lower}");
+			   // Also compute sanitized form of existing folder for more tolerant matching
+			   $existing_sanitized = strtolower( $this->sanitize_folder_path( $existing_folder ) );
+			   
+			   // Only log if this folder is a potential match (contains part of target)
+			   if (strpos($existing_lower, $target_lower) !== false || strpos($target_lower, $existing_lower) !== false) {
+				   error_log("[DO SYNC DEBUG] Comparing: '{$existing_lower}' vs '{$target_lower}'");
+			   }
+			   // Direct match
 			   if ($existing_lower === $target_lower) {
 				   error_log("DigitalOceanSpaces: ✓ Found via case-insensitive folder list: {$existing_folder}");
+				   return true;
+			   }
+
+			   // If the target is a nested path like "Banksia/U201" and the existing entry
+			   // contains a group prefix (e.g. "Shelters/Banksia/U201"), allow ends-with match
+			   if ( str_ends_with( $existing_lower, '/' . $target_lower ) || strpos( $existing_lower, '/' . $target_lower ) !== false ) {
+				   if ( is_array( $debug ) ) {
+					   $debug['case_insensitive_check']['matched_nested'] = $existing_folder;
+				   }
+				   error_log( "DigitalOceanSpaces: ✓ Found via nested/ends-with match: {$existing_folder}" );
+				   return true;
+			   }
+
+			   // Match against sanitized forms (handles spaces/hyphens, punctuation, etc.)
+			   if ( $existing_sanitized === $target_sanitized ) {
+				   if ( is_array( $debug ) ) {
+					   $debug['case_insensitive_check']['matched_sanitized'] = $existing_folder;
+				   }
+				   error_log( "DigitalOceanSpaces: ✓ Found (sanitized match): {$existing_folder}" );
+				   return true;
+			   }
+
+			   // Also try flexible replacements: spaces <-> hyphens
+			   $existing_flex = str_replace( array( ' ', '_' ), '-', $existing_sanitized );
+			   $target_flex = str_replace( array( ' ', '_' ), '-', $target_sanitized );
+			   if ( $existing_flex === $target_flex ) {
+				   if ( is_array( $debug ) ) {
+					   $debug['case_insensitive_check']['matched_flexible'] = $existing_folder;
+				   }
+				   error_log( "DigitalOceanSpaces: ✓ Found (flex match): {$existing_folder}" );
+				   return true;
+			   }
+
+			   // Try matching basename segments if full path didn't match
+			   $existing_basename = basename( $existing_lower );
+			   if ( $existing_basename === $target_lower || $existing_basename === $target_sanitized || ( $existing_basename === $existing_flex && $existing_basename === $target_flex ) ) {
+				   if ( is_array( $debug ) ) {
+					   $debug['case_insensitive_check']['matched_basename'] = $existing_folder;
+				   }
+				   error_log( "DigitalOceanSpaces: ✓ Found (basename match): {$existing_folder}" );
 				   return true;
 			   }
 		   }
@@ -1607,15 +1790,25 @@ class DigitalOceanSpaces {
 
 	/**
 	 * Sanitize a path segment for use in Digital Ocean Spaces
-	 * Always converts to lowercase to ensure case-insensitive folder structure
+	 * By default this converts to lowercase to ensure case-insensitive folder structure.
+	 * There is an opt-in setting (urbana_do_preserve_folder_case) which, when true,
+	 * preserves the original case of the provided segment (still trims and cleans
+	 * unwanted characters).
 	 */
 	private function sanitize_path_segment( $segment ) {
 		// Replace special characters and multiple spaces with single space
 		$cleaned = preg_replace( '/[^a-zA-Z0-9\s\-_]/', ' ', $segment );
 		// Replace multiple spaces with single space
 		$cleaned = preg_replace( '/\s+/', ' ', $cleaned );
-		// Convert to lowercase for case-insensitive handling
-		return strtolower( trim( $cleaned ) );
+		// If the plugin is configured to preserve folder case, return cleaned value unchanged
+		$preserve_case = get_option( 'urbana_do_preserve_folder_case', false );
+		$trimmed = trim( $cleaned );
+		if ( $preserve_case ) {
+			return $trimmed;
+		}
+
+		// Default behaviour: convert to lowercase for case-insensitive handling
+		return strtolower( $trimmed );
 	}
 
 	/**
@@ -1763,7 +1956,9 @@ class DigitalOceanSpaces {
 	 */
 	public function folder_exists( $folder_path, &$debug = null ) {
 		// GOD_DEBUG: Start folder_exists
-		error_log('GOD_DEBUG: folder_exists called for: ' . $folder_path);
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log('GOD_DEBUG: folder_exists called for: ' . $folder_path);
+		}
 		   // Normalize folder path
 		   $folder_path = rtrim( $folder_path, '/' ) . '/';
 		   if (is_array($debug)) {
@@ -1777,9 +1972,13 @@ class DigitalOceanSpaces {
 		   }
 		
 		// First check for .keep file
-		   error_log('GOD_DEBUG: Checking .keep file existence for: ' . $keep_file_path);
+		   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			   error_log('GOD_DEBUG: Checking .keep file existence for: ' . $keep_file_path);
+		   }
 		   if ( $this->check_object_exists( $keep_file_path ) ) {
-			   error_log('GOD_DEBUG: .keep file FOUND for: ' . $keep_file_path);
+			   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				   error_log('GOD_DEBUG: .keep file FOUND for: ' . $keep_file_path);
+			   }
 			   if (is_array($debug)) {
 				   $debug['keep_file_found'] = true;
 			   }
@@ -1788,23 +1987,37 @@ class DigitalOceanSpaces {
 		   if (is_array($debug)) {
 			   $debug['keep_file_found'] = false;
 		   }
-		   error_log('GOD_DEBUG: .keep file NOT found for: ' . $keep_file_path);
+		   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			   error_log('GOD_DEBUG: .keep file NOT found for: ' . $keep_file_path);
+		   }
 		
 		// If no .keep file, check if any objects exist with this prefix
 		   try {
-			   error_log('GOD_DEBUG: Checking for any object with prefix: ' . $folder_path);
+			   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				   error_log('GOD_DEBUG: Checking for any object with prefix: ' . $folder_path);
+			   }
 			   $objects = $this->list_objects( $folder_path, 1 ); // Only get 1 object to check existence
-			   $has_contents = ! empty( $objects['Contents'] );
-			   error_log('GOD_DEBUG: list_objects result for ' . $folder_path . ': ' . print_r($objects, true));
+			   // list_objects returns an array like ['success'=>true, 'objects'=>[...] ]
+			   $has_contents = false;
+			   if ( is_array( $objects ) && isset( $objects['objects'] ) && is_array( $objects['objects'] ) ) {
+				   $has_contents = count( $objects['objects'] ) > 0;
+			   }
+			   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				   error_log('GOD_DEBUG: list_objects result for ' . $folder_path . ': ' . print_r($objects, true));
+			   }
 			   if (is_array($debug)) {
 				   $debug['has_contents'] = $has_contents;
 			   }
 			   if ($has_contents) {
-				   error_log('GOD_DEBUG: Found object(s) with prefix: ' . $folder_path);
+				   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					   error_log('GOD_DEBUG: Found object(s) with prefix: ' . $folder_path);
+				   }
 				   return true;
 			   }
 		   } catch ( \Exception $e ) {
-			   error_log( 'GOD_DEBUG: folder_exists error - ' . $e->getMessage() );
+			   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				   error_log( 'GOD_DEBUG: folder_exists error - ' . $e->getMessage() );
+			   }
 			   if (is_array($debug)) {
 				   $debug['error'] = $e->getMessage();
 			   }
@@ -1812,9 +2025,13 @@ class DigitalOceanSpaces {
 		   }
 
 		   // Strategy 5: Case-insensitive check against all folder names in Spaces
-		   error_log('GOD_DEBUG: Performing case-insensitive check for: ' . $folder_path);
+		   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			   error_log('GOD_DEBUG: Performing case-insensitive check for: ' . $folder_path);
+		   }
 		   $all_folders = $this->list_all_folder_names();
-		   error_log('GOD_DEBUG: list_all_folder_names returned: ' . print_r($all_folders, true));
+		   if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			   error_log('GOD_DEBUG: list_all_folder_names returned: ' . print_r($all_folders, true));
+		   }
 		   $target_lower = strtolower(rtrim($folder_path, '/'));
 		   if (is_array($debug)) {
 			   $debug['case_insensitive_check'] = array(
@@ -1844,6 +2061,10 @@ class DigitalOceanSpaces {
 		   }
 		   if (is_array($debug)) {
 			   $debug['case_insensitive_check']['matched'] = false;
+			   if ( isset( $target_sanitized ) ) {
+				   $debug['case_insensitive_check']['target_sanitized'] = $target_sanitized;
+			   }
+			   $debug['case_insensitive_check']['existing_sanitized_examples'] = array_map(function($f){return $this->sanitize_folder_path($f);}, array_slice($all_folders,0,20));
 		   }
 		   error_log( "DigitalOceanSpaces: ✗ Not found" );
 		   return false;
@@ -1861,9 +2082,19 @@ class DigitalOceanSpaces {
 			
 			$files = array();
 			
-			if ( ! empty( $objects['Contents'] ) ) {
-				foreach ( $objects['Contents'] as $object ) {
-					$key = $object['Key'];
+			// Accept both shapes: modern ['objects'=>[..]] and older ['Contents'=> SimpleXML list]
+			$source_objects = array();
+			if ( ! empty( $objects['objects'] ) && is_array( $objects['objects'] ) ) {
+				$source_objects = $objects['objects'];
+			} elseif ( ! empty( $objects['Contents'] ) && is_array( $objects['Contents'] ) ) {
+				$source_objects = $objects['Contents'];
+			}
+
+			if ( ! empty( $source_objects ) ) {
+				foreach ( $source_objects as $object ) {
+					// Support both SimpleXML-derived items (Key/Size/LastModified)
+					// and our normalized list_objects format (key/size/last_modified)
+					$key = isset( $object['Key'] ) ? (string) $object['Key'] : ( isset( $object['key'] ) ? $object['key'] : '' );
 					
 					// Skip .keep files and folders (keys ending with /)
 					if ( str_ends_with( $key, '.keep' ) || str_ends_with( $key, '/' ) ) {
@@ -1876,8 +2107,8 @@ class DigitalOceanSpaces {
 						$files[] = array(
 							'key' => $key,
 							'name' => basename( $key ),
-							'size' => isset( $object['Size'] ) ? $object['Size'] : 0,
-							'lastModified' => isset( $object['LastModified'] ) ? $object['LastModified'] : '',
+							'size' => isset( $object['Size'] ) ? $object['Size'] : ( isset( $object['size'] ) ? $object['size'] : 0 ),
+							'lastModified' => isset( $object['LastModified'] ) ? $object['LastModified'] : ( isset( $object['last_modified'] ) ? $object['last_modified'] : '' ),
 							'url' => $this->get_object_url( $key )
 						);
 					}

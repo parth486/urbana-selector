@@ -21,15 +21,16 @@ interface Step1Props {
 }
 
 export const Step1ProductGroup: React.FC<Step1Props> = ({ data, selection, onSelect }) => {
+  const debugMode = (window as any).urbanaDebugMode || false;
   // Get product group data from database or fallback to hardcoded
   const getProductGroupData = (categoryName: string): ProductGroup => {
-    console.log("data.productGroups", data.productGroups);
+    if (debugMode) console.log("data.productGroups", data.productGroups);
     if (data.productGroups) {
       // Filter only active product groups
       const activeProductGroups = data.productGroups?.filter((group) => group.active !== false) || [];
 
       const foundGroup = activeProductGroups.find((group) => group.name === categoryName);
-      console.log("foundGroup", foundGroup);
+      if (debugMode) console.log("foundGroup", foundGroup);
       if (foundGroup) {
         return foundGroup;
       }

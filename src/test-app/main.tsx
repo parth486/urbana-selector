@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App.tsx";
 
+import "../shared/iconPatch";
 import "./styles/styles.css";
 
 ReactDOM.createRoot(document.getElementById("urbana-stepper-root-test")!).render(

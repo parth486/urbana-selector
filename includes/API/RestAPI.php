@@ -475,13 +475,26 @@ class RestAPI {
 		// Send email notification
 		$this->send_email_notification( $submission_data );
 
-		return new \WP_REST_Response(
-			array(
-				'success' => true,
-				'id'      => $submission_id,
-			),
-			201
+		// Server-side diagnostic logging when debug mode is enabled
+		$debug_mode = (bool) get_option( 'urbana_debug_mode', false );
+		if ( $debug_mode ) {
+			error_log( 'Urbana REST: submit_form called. Submission saved with ID: ' . $submission_id );
+			error_log( 'Urbana REST: submission_data: ' . print_r( $submission_data, true ) );
+		}
+
+		// Include debug payload only when plugin debug mode is enabled
+		$response_payload = array(
+			'success' => true,
+			'id'      => $submission_id,
 		);
+		if ( $debug_mode ) {
+			$response_payload['debug'] = array(
+				'receivedAt'  => $submitted_at,
+				'sanitized'   => $submission_data,
+			);
+		}
+
+		return new \WP_REST_Response( $response_payload, 201 );
 	}
 
 	public function get_submissions( $request ) {

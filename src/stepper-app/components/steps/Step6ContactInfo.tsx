@@ -23,16 +23,28 @@ interface Step6Props {
   isSubmitting: boolean;
   isSubmitted: boolean;
   onSubmit: () => void;
+  submitLabel?: string;
+  maxMessageLength?: number;
 }
 
-export const Step6ContactInfo: React.FC<Step6Props> = ({ data, contactInfo, onContactInfoChange, isSubmitting, isSubmitted, onSubmit }) => {
+export const Step6ContactInfo: React.FC<Step6Props> = ({ data, contactInfo, onContactInfoChange, isSubmitting, isSubmitted, onSubmit, submitLabel, maxMessageLength = 2000 }) => {
+  // Diagnostic: control type checks (no console logging)
+  try {
+    // Intentionally left blank to avoid console noise in production.
+  } catch (e) {}
+  React.useEffect(() => {
+    try { if (!Button) { try { window.__urbana_diag = window.__urbana_diag || { errors: [], events: [] }; window.__urbana_diag.events.push({ type: 'missing_button_import', timestamp: new Date().toISOString() }); } catch (e) {} } } catch (e) {}
+  }, []);
+
   const [acceptTerms, setAcceptTerms] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   const handleInputChange = (field: string, value: string) => {
+    // Enforce max length for message field
+    const normalized = field === 'message' && typeof value === 'string' ? value.slice(0, maxMessageLength) : value;
     onContactInfoChange({
       ...contactInfo,
-      [field]: value,
+      [field]: normalized,
     });
 
     // Clear error when field is edited
@@ -63,6 +75,7 @@ export const Step6ContactInfo: React.FC<Step6Props> = ({ data, contactInfo, onCo
     }
 
     setErrors(newErrors);
+    // Validation result captured in component state; no console logging here.
     return Object.keys(newErrors).length === 0;
   };
 
@@ -162,6 +175,7 @@ export const Step6ContactInfo: React.FC<Step6Props> = ({ data, contactInfo, onCo
           onValueChange={(value) => handleInputChange("message", value)}
           minRows={3}
         />
+        <div className="text-xs text-default-500 mt-1">{(contactInfo.message || '').length}/{maxMessageLength} characters</div>
       </motion.div>
 
       <motion.div variants={item} className="space-y-4">
@@ -193,7 +207,7 @@ export const Step6ContactInfo: React.FC<Step6Props> = ({ data, contactInfo, onCo
           onPress={handleSubmit}
           endContent={!isSubmitting && <Icon icon="lucide:send" width={18} />}
         >
-          Submit Configuration
+          {submitLabel ?? 'Submit Configuration'}
         </Button>
       </motion.div>
     </motion.div>

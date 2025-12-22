@@ -26,7 +26,7 @@ class FrontendInit {
 			wp_enqueue_script(
 				'urbana-stepper-app',
 				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.js',
-				array(),
+				array( 'wp-element' ),
 				URBANA_VERSION,
 				true
 			);
@@ -236,6 +236,8 @@ class FrontendInit {
 			echo "<script>(function(){ setTimeout(function(){ if(!window.urbanaStepperLoaded){ console.warn('[Urbana diag] stepper did not set window.urbanaStepperLoaded within 3s'); var el = document.getElementById('urbana-err-overlay'); if(el){ el.textContent = el.textContent ? el.textContent + ' | stepper not loaded' : 'Stepper not loaded'; } else { console.warn('[Urbana diag] no overlay present to show stepper load status'); } } else { console.log('[Urbana diag] stepperLoaded flag present'); } }, 3000); })();</script>";
 			// Also include the module script directly in the footer (debug fallback)
 			$script_url = URBANA_PLUGIN_URL . 'assets/dist/stepper-app.js';
+			// Ensure wp.element is available when injecting the debug module tag
+			wp_enqueue_script( 'wp-element' );
 			// Add a plain module script tag so the browser executes the bundle immediately
 			echo "<script type=\"module\" src=\"{$script_url}\"></script>";
 			// Also add diagnostic dynamic-check to report HEAD status and attempt dynamic import if needed

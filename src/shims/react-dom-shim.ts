@@ -11,8 +11,12 @@ export const createRoot = wpElement ? ((...args: any[]) => (wpElement as any).cr
 export const hydrateRoot = wpElement ? ((...args: any[]) => (wpElement as any).hydrateRoot(...args)) : missing('hydrateRoot');
 export const flushSync = wpElement && (wpElement as any).flushSync ? ((...args: any[]) => (wpElement as any).flushSync(...args)) : ((cb: any) => cb());
 
+// Provide createPortal mapping to wp.element if available (used by many UI components)
+export const createPortal = wpElement && (wpElement as any).createPortal ? ((...args: any[]) => (wpElement as any).createPortal(...args)) : missing('createPortal');
+
 export default {
   createRoot,
   hydrateRoot,
   flushSync,
+  createPortal,
 };

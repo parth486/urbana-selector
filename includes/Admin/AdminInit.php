@@ -259,6 +259,10 @@ EOD;
 					2
 				);
 
+				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
+				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
+				wp_add_inline_script( 'urbana-settings', $urbana_portal_polyfill, 'before' );
+
 				wp_enqueue_style(
 					'urbana-settings',
 					URBANA_PLUGIN_URL . 'assets/dist/settings-app.css',
@@ -308,6 +312,10 @@ EOD;
 					10,
 					2
 				);
+
+				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
+				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
+				wp_add_inline_script( 'urbana-data-builder', $urbana_portal_polyfill, 'before' );
 
 				wp_enqueue_style(
 					'urbana-data-builder',
@@ -363,6 +371,10 @@ EOD;
 					10,
 					2
 				);
+
+				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
+				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
+				wp_add_inline_script( 'urbana-admin-orders', $urbana_portal_polyfill, 'before' );
 
 				wp_enqueue_style(
 					'urbana-admin-orders',

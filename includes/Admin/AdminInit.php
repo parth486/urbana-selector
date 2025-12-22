@@ -61,25 +61,26 @@ class AdminInit {
 
 		echo '<div class="wrap">';
 
-		// Migration UI for updating stored group names
-		echo '<div id="urbana-migration-ui" style="margin-bottom:18px;padding:12px;border:1px solid #ddd;background:#fff;border-radius:6px;">';
-		echo '<h2 style="margin-top:0;">Data Builder — Group name migration</h2>';
-		echo '<p style="margin:6px 0 12px;color:#444;">Quick migration tool: update saved product builder data group names in the database (admin only).</p>';
-		echo '<label style="display:block;margin-bottom:6px;font-weight:600;">From (existing group name)<br/>';
-		echo '<input id="urbana-migrate-from" type="text" value="Shelter" style="width:240px;margin-top:6px;padding:6px;border-radius:4px;border:1px solid #ccc;"/>'; 
-		echo '</label>';
-		echo '<label style="display:block;margin:12px 0 6px;font-weight:600;">To (target group name)<br/>';
-		echo '<input id="urbana-migrate-to" type="text" value="Shelters" style="width:240px;margin-top:6px;padding:6px;border-radius:4px;border:1px solid #ccc;"/>'; 
-		echo '</label>';
-		echo '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;">';
-		echo '<button id="urbana-run-migration" class="button button-primary">Run migration (rename)</button>&nbsp;';
-		echo '<button id="urbana-populate-range-groups" class="button">Populate missing range.groupName</button>';
-		echo '&nbsp;<button id="urbana-run-scan" class="button">Run DO mismatch scan (dry-run)</button>';
-		echo '<span id="urbana-migration-status" style="margin-left:10px;vertical-align:middle;color:#666"></span>';
-		echo '</div>';
-		echo '<div id="urbana-migration-report" style="margin-top:12px;white-space:pre-wrap;font-family:monospace;color:#222;display:none;border-top:1px solid #eee;padding-top:10px;"></div>';
-		echo '</div>';
-		echo <<<'EOD'
+		// Migration UI for updating stored group names (hidden unless debug mode is enabled)
+		if ( (bool) get_option( 'urbana_debug_mode', false ) ) {
+			echo '<div id="urbana-migration-ui" style="margin-bottom:18px;padding:12px;border:1px solid #ddd;background:#fff;border-radius:6px;">';
+			echo '<h2 style="margin-top:0;">Data Builder — Group name migration</h2>';
+			echo '<p style="margin:6px 0 12px;color:#444;">Quick migration tool: update saved product builder data group names in the database (admin only).</p>';
+			echo '<label style="display:block;margin-bottom:6px;font-weight:600;">From (existing group name)<br/>';
+			echo '<input id="urbana-migrate-from" type="text" value="Shelter" style="width:240px;margin-top:6px;padding:6px;border-radius:4px;border:1px solid #ccc;"/>'; 
+			echo '</label>';
+			echo '<label style="display:block;margin:12px 0 6px;font-weight:600;">To (target group name)<br/>';
+			echo '<input id="urbana-migrate-to" type="text" value="Shelters" style="width:240px;margin-top:6px;padding:6px;border-radius:4px;border:1px solid #ccc;"/>'; 
+			echo '</label>';
+			echo '<div style="margin-top:12px;display:flex;gap:10px;align-items:center;">';
+			echo '<button id="urbana-run-migration" class="button button-primary">Run migration (rename)</button>&nbsp;';
+			echo '<button id="urbana-populate-range-groups" class="button">Populate missing range.groupName</button>';
+			echo '&nbsp;<button id="urbana-run-scan" class="button">Run DO mismatch scan (dry-run)</button>';
+			echo '<span id="urbana-migration-status" style="margin-left:10px;vertical-align:middle;color:#666"></span>';
+			echo '</div>';
+			echo '<div id="urbana-migration-report" style="margin-top:12px;white-space:pre-wrap;font-family:monospace;color:#222;display:none;border-top:1px solid #eee;padding-top:10px;"></div>';
+			echo '</div>';
+			echo <<<'EOD'
 <script type="text/javascript">
 // Migration UI script loaded
 (function(){
@@ -211,6 +212,7 @@ class AdminInit {
 })();
 </script>
 EOD;
+		} // end debug-mode check
 		// Mount node for the React Data Builder app
 		echo '<div id="urbana-data-builder-root"></div>';
 	}
@@ -239,7 +241,7 @@ EOD;
 				wp_enqueue_script(
 					'urbana-settings',
 					URBANA_PLUGIN_URL . 'assets/dist/settings-app.js',
-					array(),
+					array( 'wp-element' ),
 					URBANA_VERSION,
 					true
 				);
@@ -289,7 +291,7 @@ EOD;
 				wp_enqueue_script(
 					'urbana-data-builder',
 					URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.js',
-					array(),
+					array( 'wp-element' ),
 					URBANA_VERSION,
 					true
 				);

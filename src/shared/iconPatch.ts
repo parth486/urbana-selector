@@ -43,42 +43,58 @@ try {
   const R: any = React as any;
   const origCreate = R && R.createElement ? R.createElement.bind(R) : null;
   if (origCreate) {
-    R.createElement = function patchedCreate(type: any, ...args: any[]) {
-      try {
-        // Only consider complex component types (not string DOM tags)
-        if (type && (typeof type === 'function' || typeof type === 'object')) {
-          // If getCollectionNode exists but is not callable, coerce to a safe generator
-          if (Object.prototype.hasOwnProperty.call(type, 'getCollectionNode') && typeof type.getCollectionNode !== 'function') {
-            try {
-              type.getCollectionNode = function* () {
-                return null;
-              } as unknown as Function;
-            } catch (coerceErr) {
-              // if assignment fails for readonly properties, attempt to define property
-              try {
-                Object.defineProperty(type, 'getCollectionNode', {
-                  configurable: true,
-                  enumerable: false,
-                  writable: true,
-                  value: function* () {
+    try {
+      // Check whether the createElement property is writable or configurable before attempting to replace it.
+      // Some environments (like wp.element) expose a getter-only property which cannot be reassigned.
+      const desc = Object.getOwnPropertyDescriptor(R, 'createElement');
+      const canPatch = !desc || desc.writable || desc.configurable;
+
+      if (canPatch) {
+        R.createElement = function patchedCreate(type: any, ...args: any[]) {
+          try {
+            // Only consider complex component types (not string DOM tags)
+            if (type && (typeof type === 'function' || typeof type === 'object')) {
+              // If getCollectionNode exists but is not callable, coerce to a safe generator
+              if (Object.prototype.hasOwnProperty.call(type, 'getCollectionNode') && typeof type.getCollectionNode !== 'function') {
+                try {
+                  type.getCollectionNode = function* () {
                     return null;
-                  },
-                });
-              } catch (defineErr) {
-                // nothing else we can do, move on
-                // eslint-disable-next-line no-console
-                console.warn('iconPatch: failed to coerce getCollectionNode property', defineErr);
+                  } as unknown as Function;
+                } catch (coerceErr) {
+                  // if assignment fails for readonly properties, attempt to define property
+                  try {
+                    Object.defineProperty(type, 'getCollectionNode', {
+                      configurable: true,
+                      enumerable: false,
+                      writable: true,
+                      value: function* () {
+                        return null;
+                      },
+                    });
+                  } catch (defineErr) {
+                    // nothing else we can do, move on
+                    // eslint-disable-next-line no-console
+                    console.warn('iconPatch: failed to coerce getCollectionNode property', defineErr);
+                  }
+                }
               }
             }
+          } catch (x) {
+            // Don't let this patch break creation flow
+            // eslint-disable-next-line no-console
+            console.warn('iconPatch: createElement patch failed', x);
           }
-        }
-      } catch (x) {
-        // Don't let this patch break creation flow
+          return origCreate(type, ...args);
+        };
+      } else {
+        // Can't patch createElement in this environment (likely a getter-only wp.element); skip to avoid noisy errors
         // eslint-disable-next-line no-console
-        console.warn('iconPatch: createElement patch failed', x);
+        console.warn('iconPatch: cannot patch React.createElement (non-writable, non-configurable); skipping createElement coercion');
       }
-      return origCreate(type, ...args);
-    };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('iconPatch: global coercion failed', err);
+    }
   }
 } catch (e) {
   // Keep runtime safe — failure of this patch is non-fatal.

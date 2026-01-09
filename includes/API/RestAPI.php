@@ -631,6 +631,14 @@ class RestAPI {
 	public function update_product_data( $request ) {
 		$data = $request->get_json_params();
 
+		// Debug log the incoming data
+		error_log( '[Urbana API] update_product_data called with data: ' . json_encode( $data ) );
+		if ( isset( $data['stepper_data_builder']['products'] ) ) {
+			foreach ( $data['stepper_data_builder']['products'] as $product ) {
+				error_log( '[Urbana API] Product ' . $product['code'] . ' coreDesignElement: ' . json_encode( $product['coreDesignElement'] ?? 'NOT SET' ) );
+			}
+		}
+
 		// Save stepper form data first
 		if ( isset( $data['stepper_form_data'] ) ) {
 			$stepper_result = $this->db_manager->update_product_data( 'stepper_form_data', $data['stepper_form_data'] );

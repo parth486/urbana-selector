@@ -69,6 +69,7 @@ export const productData = {
               "Revit Model": "Peninsula_K301.rvt",
               "CAD Drawing": "Peninsula_K301.dwg",
             },
+            coreDesignElement: [],
             faqs: [
               {
                 question: "What is the recommended maintenance schedule for the K301?",

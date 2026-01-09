@@ -31,8 +31,7 @@ import { useDataBuilderStore, Product } from "../../stores/useDataBuilderStore";
 import SecureImage from "./SecureImage";
 import { FileManager } from "./product-fields/FileManager";
 import { ImageGalleryManager } from "./product-fields/ImageGalleryManager";
-import { SpecificationManager } from "./product-fields/SpecificationManager";
-import { OptionsManager } from "./product-fields/OptionsManager";
+import { CoreDesignElementManager, CoreDesignField } from "./product-fields/CoreDesignElementManager";
 import { AssetGenerator } from "../../utils/assetGenerator";
 import { DigitalOceanSyncPanel } from "./DigitalOceanSyncPanel";
 
@@ -65,6 +64,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     imageGallery: [],
     files: {},
     options: undefined,
+    coreDesignElement: [],
     faqs: [],
     active: true,
   });
@@ -144,6 +144,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
       imageGallery: [],
       files: {},
       options: undefined,
+      coreDesignElement: [],
       active: true,
     });
     setProductOptions({});
@@ -165,6 +166,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         files: { ...product.files },
         faqs: product.faqs || [],
         options: product.options,
+        coreDesignElement: product.coreDesignElement || [],
         active: product.active,
       });
 
@@ -203,6 +205,7 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
         | string[]
         | Record<string, string>
         | Array<{ question: string; answer: string }>
+        | Array<{ id: string; label: string; type: "text" | "dropdown"; value?: string; values?: string[]; defaultValue?: string }>
     ) => {
       setFormData((prev) => ({ ...prev, [field]: value }));
 
@@ -297,6 +300,9 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
     if (!validateForm()) {
       return;
     }
+
+    console.log('[ProductsManager] Form Data Before Submit:', formData);
+    console.log('[ProductsManager] coreDesignElement:', formData.coreDesignElement);
 
     let needsRename = false;
     let oldProductCode: string | null = null;
@@ -1348,13 +1354,6 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                     </div>
                   </Tab>
 
-                  <Tab key="specifications" title="Specifications">
-                    <SpecificationManager
-                      specifications={formData.specifications}
-                      onSpecificationsChange={(specs) => handleInputChange("specifications", specs)}
-                    />
-                  </Tab>
-
                   <Tab key="images" title="Images">
                     <ImageGalleryManager
                       imageGallery={formData.imageGallery}
@@ -1375,20 +1374,11 @@ export const ProductsManager: React.FC<ProductsManagerProps> = ({ stepperID }) =
                     />
                   </Tab>
 
-                  <Tab
-                    key="options"
-                    title={
-                      <div className="flex items-center gap-2">
-                        <span>Options</span>
-                        {Object.keys(productOptions).length > 0 && (
-                          <Chip size="sm" variant="flat">
-                            {Object.keys(productOptions).length}
-                          </Chip>
-                        )}
-                      </div>
-                    }
-                  >
-                    <OptionsManager options={productOptions} onOptionsChange={setProductOptions} />
+                  <Tab key="coreDesignElement" title="Core Design Element">
+                    <CoreDesignElementManager
+                      fields={formData.coreDesignElement}
+                      onFieldsChange={(fields) => handleInputChange("coreDesignElement", fields)}
+                    />
                   </Tab>
                   <Tab key="faqs" title="FAQs">
                     <div className="space-y-4">

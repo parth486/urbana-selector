@@ -14,9 +14,13 @@ export const flushSync = wpElement && (wpElement as any).flushSync ? ((...args: 
 // Provide createPortal mapping to wp.element if available (used by many UI components)
 export const createPortal = wpElement && (wpElement as any).createPortal ? ((...args: any[]) => (wpElement as any).createPortal(...args)) : missing('createPortal');
 
+// Provide unstable_batchedUpdates (used by dnd-kit)
+export const unstable_batchedUpdates = wpElement && (wpElement as any).unstable_batchedUpdates ? ((...args: any[]) => (wpElement as any).unstable_batchedUpdates(...args)) : ((cb: any) => cb && cb());
+
 export default {
   createRoot,
   hydrateRoot,
   flushSync,
   createPortal,
+  unstable_batchedUpdates,
 };

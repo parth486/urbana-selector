@@ -31,6 +31,7 @@ export interface Product {
   imageGallery: string[];
   files: Record<string, string>;
   options?: Record<string, Array<{ value: string; imageUrl?: string }>>; // Optional product-specific options
+  coreDesignElement?: Array<{ id: string; label: string; type: "text" | "dropdown"; value?: string; values?: string[]; defaultValue?: string }>;
   faqs?: Array<{ question: string; answer: string }>;
   active: boolean;
 }
@@ -480,6 +481,16 @@ export const useDataBuilderStore = create<DataBuilderState>()(
         try {
           const exportedData = get().exportData();
           const { productGroups, productRanges, products, relationships } = get();
+
+          console.log('[saveData] Products being saved:', products);
+          products.forEach((p) => {
+            console.log(`[saveData] Product ${p.code} coreDesignElement:`, p.coreDesignElement);
+            if (p.coreDesignElement) {
+              p.coreDesignElement.forEach((field) => {
+                console.log(`  Field: ${field.label}, type: ${field.type}, defaultValue: ${field.defaultValue}, values: ${JSON.stringify(field.values)}`);
+              });
+            }
+          });
 
           const response = await fetch("/wp-json/urbana/v1/product-data", {
             method: "POST",

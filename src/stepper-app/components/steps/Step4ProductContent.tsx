@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from "react";
-import { Tabs, Tab, Card, CardBody, Accordion, AccordionItem, Button } from "@heroui/react";
+import { Tabs, Tab, Card, CardBody, Accordion, AccordionItem, Button, Select, SelectItem } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { motion } from "framer-motion";
 import SecureImage, { prefetchImage } from "../SecureImage";
@@ -14,6 +14,16 @@ interface Step4Props {
   productId: string;
 }
 
+interface CoreDesignField {
+  id: string;
+  label: string;
+  type: "text" | "dropdown";
+  value?: string;
+  values?: string[];
+  defaultValue?: string;
+  conditions?: Array<{ fieldId: string; value: string }>;
+}
+
 interface ProductDetail {
   name: string;
   overview: string;
@@ -21,6 +31,7 @@ interface ProductDetail {
   specifications: string[];
   imageGallery: string[];
   files: Record<string, string>;
+  coreDesignElement?: CoreDesignField[];
   faqs?: Array<{ question: string; answer: string }>;
 }
 
@@ -127,11 +138,48 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [coreDesignSelections, setCoreDesignSelections] = useState<Record<string, string>>({});
+
+  // Initialize selections with default values whenever product details change
+  useEffect(() => {
+    if (debugMode) console.log('[Step4] Product Details:', productDetails);
+    if (debugMode && productDetails.coreDesignElement) {
+      console.log('[Step4] Core Design Element Fields:', productDetails.coreDesignElement);
+      productDetails.coreDesignElement.forEach((field) => {
+        console.log(`[Step4] Field "${field.label}" - type: ${field.type}, defaultValue: ${field.defaultValue}, values: ${JSON.stringify(field.values)}`);
+      });
+    }
+    
+    const initialSelections: Record<string, string> = {};
+    if (productDetails.coreDesignElement) {
+      productDetails.coreDesignElement.forEach((field) => {
+        if (field.type === 'dropdown' && field.defaultValue) {
+          console.log(`[Step4] Setting default for ${field.label}: ${field.defaultValue}`);
+          initialSelections[field.id] = field.defaultValue;
+        }
+      });
+    }
+    console.log('[Step4] Initial selections:', initialSelections);
+    setCoreDesignSelections(initialSelections);
+  }, [productDetails.coreDesignElement, debugMode]);
 
   const openLightboxAt = (i: number) => {
     if (debugMode) console.warn(`[Step4] openLightboxAt called with index: ${i}`);
     setLightboxIndex(i);
     setLightboxOpen(true);
+  };
+
+  // Helper function to check if a field should be visible based on conditions
+  const isFieldVisible = (field: CoreDesignField): boolean => {
+    if (!field.conditions || field.conditions.length === 0) {
+      return true; // No conditions = always visible
+    }
+
+    // All conditions must be met (AND logic)
+    return field.conditions.every((condition) => {
+      const selectedValue = coreDesignSelections[condition.fieldId];
+      return selectedValue === condition.value;
+    });
   };
 
   useEffect(() => {
@@ -239,20 +287,61 @@ export const Step4ProductContent: React.FC<Step4Props> = ({ data, productId }) =
           <h3 className="text-xl font-semibold mb-2">{productDetails.name}</h3>
           <p className="text-default-600 mb-4">{productDetails.overview}</p>
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Icon icon="lucide:check-circle" className="text-success" width={20} />
-              <span>In Stock</span>
+          {/* Core Design Elements Section */}
+          {productDetails.coreDesignElement && productDetails.coreDesignElement.length > 0 ? (
+            <div className="space-y-5">
+              <div className="space-y-4">
+                {productDetails.coreDesignElement.map((field) => (
+                  isFieldVisible(field) && (
+                    <div key={field.id}>
+                      {field.type === 'text' ? (
+                        <div>
+                          <span className="font-semibold">{field.label}:</span>
+                          <span className="ml-2">{field.value}</span>
+                        </div>
+                      ) : field.type === 'dropdown' ? (
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">{field.label}</label>
+                          <Select
+                            selectedKeys={coreDesignSelections[field.id] ? [coreDesignSelections[field.id]] : []}
+                            onSelectionChange={(keys) => {
+                              const selectedValue = Array.from(keys)[0] as string;
+                              setCoreDesignSelections({ ...coreDesignSelections, [field.id]: selectedValue });
+                            }}
+                            placeholder={`Select ${field.label}`}
+                            size="sm"
+                            className="w-full"
+                          >
+                            {field.values?.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </Select>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                ))}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Icon icon="lucide:truck" className="text-default-500" width={20} />
-              <span>Standard Delivery: 2-4 weeks</span>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Icon icon="lucide:check-circle" className="text-success" width={20} />
+                <span>In Stock</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Icon icon="lucide:truck" className="text-default-500" width={20} />
+                <span>Standard Delivery: 2-4 weeks</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Icon icon="lucide:shield" className="text-default-500" width={20} />
+                <span>10 Year Warranty</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Icon icon="lucide:shield" className="text-default-500" width={20} />
-              <span>10 Year Warranty</span>
-            </div>
-          </div>
+          )}
+
           <div className="mt-4">
             <Button
               color="primary"

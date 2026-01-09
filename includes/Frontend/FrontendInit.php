@@ -103,6 +103,7 @@ class FrontendInit {
 								'imageGallery'   => $p['imageGallery'] ?? array(),
 								'files'          => $p['files'] ?? array(),
 								'faqs'           => $p['faqs'] ?? array(),
+								'coreDesignElement' => $p['coreDesignElement'] ?? array(),
 							);
 						}
 					}

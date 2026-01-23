@@ -32,7 +32,7 @@ export default defineConfig({
       'react-dom/client': resolve(__dirname, 'src/shims/react-dom-shim.ts'),
       'react-dom': resolve(__dirname, 'src/shims/react-dom-shim.ts'),
     },
-
   },
-  base: "./",
+  // Use absolute path that works in WordPress admin context
+  base: "/wp-content/plugins/urbana-selector-master/assets/dist/",
 });

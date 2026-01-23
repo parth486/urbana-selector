@@ -233,6 +233,24 @@ EOD;
 		}
 		global $wpdb;
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
+		
+		// Add a script to set the correct base path for ES modules
+		wp_add_inline_script(
+			'wp-element',
+			"
+			if (typeof window !== 'undefined') {
+				// Set a global variable for the Urbana plugin asset base path
+				window.urbanaAssetBase = '" . esc_attr( URBANA_PLUGIN_URL . 'assets/dist/' ) . "';
+				// Ensure ES module import.meta.url resolves correctly
+				if (!import.meta.url) {
+					Object.defineProperty(import.meta, 'url', {
+						value: window.urbanaAssetBase
+					});
+				}
+			}
+			",
+			'before'
+		);
 
 		// Settings App (Main page).
 		if ( 'toplevel_page_urbana-selector' === $hook ) {

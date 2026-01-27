@@ -13,6 +13,15 @@ class AdminInit {
 		add_action( 'wp_ajax_urbana_sync_folders_to_do', array( $this, 'ajax_sync_folders_to_do' ) );
 	}
 
+	/**
+	 * Get initialization script that sets up module context before loading ES modules.
+	 * This provides Vite's dynamic import resolver with proper base paths and ensures
+	 * WordPress polyfills are in place.
+	 */
+	private function get_module_init_script() {
+		return "(function(){try{const currentScript=document.currentScript||Array.from(document.scripts).pop();if(currentScript&&currentScript.src){const scriptUrl=new URL(currentScript.src,window.location.href);const distDir=scriptUrl.pathname.replace(/[^\\/]*\\.js$/,'');window.urbanaModuleBase=distDir;window.urbanaModuleContext={baseUrl:scriptUrl.href,distPath:distDir,timestamp:Date.now()}}}catch(e){console.warn('[Urbana] failed to set module context',e)}try{if(window.wp&&window.wp.element){if(typeof window.wp.element.createPortal!=='function'){window.wp.element.createPortal=function(children,container){return children};console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)')}}}catch(e){console.warn('[Urbana] createPortal check failed',e)}})();";
+	}
+
 	public function add_admin_menu() {
 		// Main menu page
 		add_menu_page(
@@ -231,189 +240,233 @@ EOD;
 		if ( strpos( $hook, 'urbana-' ) === false ) {
 			return;
 		}
-		global $wpdb;
+
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
-		
-		// Add a script to set the correct base path for ES modules
-		wp_add_inline_script(
-			'wp-element',
-			"
-			if (typeof window !== 'undefined') {
-				// Set a global variable for the Urbana plugin asset base path
-				window.urbanaAssetBase = '" . esc_attr( URBANA_PLUGIN_URL . 'assets/dist/' ) . "';
-				// Ensure ES module import.meta.url resolves correctly
-				if (!import.meta.url) {
-					Object.defineProperty(import.meta, 'url', {
-						value: window.urbanaAssetBase
-					});
-				}
-			}
-			",
-			'before'
-		);
+
+		// Ensure wp-element is loaded BEFORE any of our modules
+		wp_enqueue_script( 'wp-element' );
+
+		// Add import map once for all admin pages
+		$this->enqueue_import_map();
 
 		// Settings App (Main page).
 		if ( 'toplevel_page_urbana-selector' === $hook ) {
-			if ( file_exists( $asset_file . 'settings-app.js' ) ) {
-
-				wp_enqueue_script(
-					'urbana-settings',
-					URBANA_PLUGIN_URL . 'assets/dist/settings-app.js',
-					array( 'wp-element' ),
-					URBANA_VERSION,
-					true
-				);
-
-				// Add module type attribute.
-				add_filter(
-					'script_loader_tag',
-					function ( $tag, $handle ) {
-						if ( 'urbana-settings' === $handle ) {
-							return str_replace( '<script', '<script type="module"', $tag );
-						}
-						return $tag;
-					},
-					10,
-					2
-				);
-
-				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
-				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
-				wp_add_inline_script( 'urbana-settings', $urbana_portal_polyfill, 'before' );
-
-				wp_enqueue_style(
-					'urbana-settings',
-					URBANA_PLUGIN_URL . 'assets/dist/settings-app.css',
-					array(),
-					URBANA_VERSION
-				);
-
-				// Localize script for API calls.
-				wp_localize_script(
-					'urbana-settings',
-					'urbanaAdmin',
-					array(
-						'apiUrl'        => rest_url( 'urbana/v1/' ),
-						'nonce'         => wp_create_nonce( 'wp_rest' ),
-						'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
-						'wpVersion'     => get_bloginfo( 'version' ),
-						'phpVersion'    => phpversion(),
-						'pluginVersion' => URBANA_VERSION,
-						'debugMode'     => (bool) get_option( 'urbana_debug_mode', false ),
-					)
-				);
-			}
+			$this->load_settings_app( $asset_file );
 		}
 
 		// Data Builder App.
 		if ( 'urbana-selector_page_urbana-data-builder' === $hook ) {
-			if ( file_exists( $asset_file . 'data-builder-app.js' ) ) {
-
-				wp_enqueue_media();
-				wp_enqueue_script(
-					'urbana-data-builder',
-					URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.js',
-					array( 'wp-element' ),
-					URBANA_VERSION,
-					true
-				);
-
-					// Add module type attribute.
-				add_filter(
-					'script_loader_tag',
-					function ( $tag, $handle ) {
-						if ( 'urbana-data-builder' === $handle ) {
-							return str_replace( '<script', '<script type="module"', $tag );
-						}
-						return $tag;
-					},
-					10,
-					2
-				);
-
-				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
-				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
-				wp_add_inline_script( 'urbana-data-builder', $urbana_portal_polyfill, 'before' );
-
-				wp_enqueue_style(
-					'urbana-data-builder',
-					URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.css',
-					array(),
-					URBANA_VERSION
-				);
-
-				// Get data from database.
-				$db_manager   = new \Urbana\Database\DatabaseManager();
-				$stepper_id   = $db_manager->get_product_data_first_id();
-				$stepper_data = $db_manager->get_product_data( $stepper_id, 'stepper_form_data' );
-				$builder_key  = 'stepper_data_builder_' . $stepper_id;
-				$builder_data = $db_manager->get_product_data( null, $builder_key );
-
-				// Localize script for API calls.
-				wp_localize_script(
-					'urbana-data-builder',
-					'urbanaAdmin',
-					array(
-						'apiUrl'             => rest_url( 'urbana/v1/' ),
-						'nonce'              => wp_create_nonce( 'wp_rest' ),
-						'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
-						'stepperId'          => $stepper_id,
-						'stepperFormData'    => $stepper_data ? $stepper_data : array(),
-						'stepperDataBuilder' => $builder_data ? $builder_data : array(),
-						'debugMode'          => (bool) get_option( 'urbana_debug_mode', false ),
-					)
-				);
-			}
+			$this->load_data_builder_app( $asset_file );
 		}
 
 		// Admin Orders App.
 		if ( 'urbana-selector_page_urbana-orders' === $hook ) {
-			if ( file_exists( $asset_file . 'admin-orders-app.js' ) ) {
-				wp_enqueue_script(
-					'urbana-admin-orders',
-					URBANA_PLUGIN_URL . 'assets/dist/admin-orders-app.js',
-					array( 'wp-element' ),
-					URBANA_VERSION,
-					true
-				);
-
-				// Add module type attribute.
-				add_filter(
-					'script_loader_tag',
-					function ( $tag, $handle ) {
-						if ( 'urbana-admin-orders' === $handle ) {
-							return str_replace( '<script', '<script type="module"', $tag );
-						}
-						return $tag;
-					},
-					10,
-					2
-				);
-
-				// Defensive polyfill: ensure createPortal exists on wp.element to avoid runtime errors
-				$urbana_portal_polyfill = "(function(){try{if(window.wp && window.wp.element){if(typeof window.wp.element.createPortal !== 'function'){window.wp.element.createPortal = function(children, container){return children;}; console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)');}}}catch(e){console.warn('[Urbana] createPortal check failed', e);}})();";
-				wp_add_inline_script( 'urbana-admin-orders', $urbana_portal_polyfill, 'before' );
-
-				wp_enqueue_style(
-					'urbana-admin-orders',
-					URBANA_PLUGIN_URL . 'assets/dist/admin-orders-app.css',
-					array(),
-					URBANA_VERSION
-				);
-
-				// Localize script for API calls.
-				wp_localize_script(
-					'urbana-admin-orders',
-					'urbanaAdmin',
-					array(
-						'apiUrl'    => rest_url( 'urbana/v1/' ),
-						'nonce'     => wp_create_nonce( 'wp_rest' ),
-						'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
-						'debugMode' => (bool) get_option( 'urbana_debug_mode', false ),
-					)
-				);
-			}
+			$this->load_admin_orders_app( $asset_file );
 		}
+	}
+
+	/**
+	 * Load settings app with proper script dependencies and data injection
+	 */
+	private function load_settings_app( $asset_file ) {
+		if ( ! file_exists( $asset_file . 'settings-app.js' ) ) {
+			return;
+		}
+
+		// Prepare data for settings app
+		$urbana_data = array(
+			'apiUrl'        => rest_url( 'urbana/v1/' ),
+			'nonce'         => wp_create_nonce( 'wp_rest' ),
+			'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+			'wpVersion'     => get_bloginfo( 'version' ),
+			'phpVersion'    => phpversion(),
+			'pluginVersion' => URBANA_VERSION,
+			'debugMode'     => (bool) get_option( 'urbana_debug_mode', false ),
+		);
+
+		// Output data directly to window before module loads
+		wp_add_inline_script(
+			'wp-element',
+			'window.urbanaAdmin = ' . wp_json_encode( $urbana_data ) . ';',
+			'after'
+		);
+
+		// Enqueue module script that depends on wp-element
+		wp_enqueue_script(
+			'urbana-settings',
+			URBANA_PLUGIN_URL . 'assets/dist/settings-app.js',
+			array( 'wp-element' ),
+			URBANA_VERSION,
+			true
+		);
+
+		// Add module type attribute
+		add_filter(
+			'script_loader_tag',
+			function ( $tag, $handle ) {
+				if ( 'urbana-settings' === $handle ) {
+					return str_replace( '<script', '<script type="module"', $tag );
+				}
+				return $tag;
+			},
+			10,
+			2
+		);
+
+		wp_enqueue_style(
+			'urbana-settings',
+			URBANA_PLUGIN_URL . 'assets/dist/settings-app.css',
+			array(),
+			URBANA_VERSION
+		);
+
+		// Provide module context before module loads
+		wp_add_inline_script( 'urbana-settings', $this->get_module_init_script(), 'before' );
+	}
+
+	/**
+	 * Load data builder app with proper script dependencies and data injection
+	 */
+	private function load_data_builder_app( $asset_file ) {
+		if ( ! file_exists( $asset_file . 'data-builder-app.js' ) ) {
+			return;
+		}
+
+		wp_enqueue_media();
+
+		// Get data from database
+		$db_manager   = new \Urbana\Database\DatabaseManager();
+		$stepper_id   = $db_manager->get_product_data_first_id();
+		$stepper_data = $db_manager->get_product_data( $stepper_id, 'stepper_form_data' );
+		$builder_key  = 'stepper_data_builder_' . $stepper_id;
+		$builder_data = $db_manager->get_product_data( null, $builder_key );
+
+		// Prepare data for data builder app
+		$urbana_data = array(
+			'apiUrl'             => rest_url( 'urbana/v1/' ),
+			'nonce'              => wp_create_nonce( 'wp_rest' ),
+			'ajaxUrl'            => admin_url( 'admin-ajax.php' ),
+			'stepperId'          => $stepper_id,
+			'stepperFormData'    => $stepper_data ? $stepper_data : array(),
+			'stepperDataBuilder' => $builder_data ? $builder_data : array(),
+			'debugMode'          => (bool) get_option( 'urbana_debug_mode', false ),
+		);
+
+		// Output data directly to window before module loads
+		wp_add_inline_script(
+			'wp-element',
+			'window.urbanaAdmin = ' . wp_json_encode( $urbana_data ) . ';',
+			'after'
+		);
+
+		// Enqueue module script that depends on wp-element
+		wp_enqueue_script(
+			'urbana-data-builder',
+			URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.js',
+			array( 'wp-element' ),
+			URBANA_VERSION,
+			true
+		);
+
+		// Add module type attribute
+		add_filter(
+			'script_loader_tag',
+			function ( $tag, $handle ) {
+				if ( 'urbana-data-builder' === $handle ) {
+					return str_replace( '<script', '<script type="module"', $tag );
+				}
+				return $tag;
+			},
+			10,
+			2
+		);
+
+		wp_enqueue_style(
+			'urbana-data-builder',
+			URBANA_PLUGIN_URL . 'assets/dist/data-builder-app.css',
+			array(),
+			URBANA_VERSION
+		);
+
+		// Provide module context before module loads
+		wp_add_inline_script( 'urbana-data-builder', $this->get_module_init_script(), 'before' );
+	}
+
+	/**
+	 * Load admin orders app with proper script dependencies and data injection
+	 */
+	private function load_admin_orders_app( $asset_file ) {
+		if ( ! file_exists( $asset_file . 'admin-orders-app.js' ) ) {
+			return;
+		}
+
+		// Prepare data for orders app
+		$urbana_data = array(
+			'apiUrl'    => rest_url( 'urbana/v1/' ),
+			'nonce'     => wp_create_nonce( 'wp_rest' ),
+			'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+			'debugMode' => (bool) get_option( 'urbana_debug_mode', false ),
+		);
+
+		// Output data directly to window before module loads
+		wp_add_inline_script(
+			'wp-element',
+			'window.urbanaAdmin = ' . wp_json_encode( $urbana_data ) . ';',
+			'after'
+		);
+
+		// Enqueue module script that depends on wp-element
+		wp_enqueue_script(
+			'urbana-admin-orders',
+			URBANA_PLUGIN_URL . 'assets/dist/admin-orders-app.js',
+			array( 'wp-element' ),
+			URBANA_VERSION,
+			true
+		);
+
+		// Add module type attribute
+		add_filter(
+			'script_loader_tag',
+			function ( $tag, $handle ) {
+				if ( 'urbana-admin-orders' === $handle ) {
+					return str_replace( '<script', '<script type="module"', $tag );
+				}
+				return $tag;
+			},
+			10,
+			2
+		);
+
+		wp_enqueue_style(
+			'urbana-admin-orders',
+			URBANA_PLUGIN_URL . 'assets/dist/admin-orders-app.css',
+			array(),
+			URBANA_VERSION
+		);
+
+		// Provide module context before module loads
+		wp_add_inline_script( 'urbana-admin-orders', $this->get_module_init_script(), 'before' );
+	}
+
+	/**
+	 * Enqueue import map for ES module dynamic imports in admin context
+	 */
+	private function enqueue_import_map() {
+		static $already_enqueued = false;
+		if ( $already_enqueued ) {
+			return;
+		}
+		$already_enqueued = true;
+
+		$dist_url = URBANA_PLUGIN_URL . 'assets/dist/';
+		$import_map = array(
+			'imports' => array(
+				'urbana:' => $dist_url,
+			),
+		);
+
+		// Output importmap to help browser resolve dynamic imports and chunks
+		echo '<script type="importmap">' . wp_json_encode( $import_map ) . '</script>';
 	}
 
 	public function admin_init() {

@@ -568,10 +568,23 @@ export const useDataBuilderStore = create<DataBuilderState>()(
           });
           draft.productRanges = ranges;
 
-          // Extract products
+          // Extract products - fix ungrouped products
           const productsList: Product[] = [];
-          Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
-            productCodes.forEach((code: string) => {
+          const productsStep = data.stepperForm.steps[2].products || {};
+          
+          // First pass: collect all products and identify those in proper ranges
+          const productsInRanges = new Set<string>();
+          Object.entries(productsStep).forEach(([rangeName, productCodes]: [string, any]) => {
+            if (rangeName && rangeName !== '' && rangeName !== 'undefined') {
+              (productCodes as string[]).forEach(code => {
+                productsInRanges.add(code);
+              });
+            }
+          });
+
+          // Second pass: add all products, whether they're in ranges or ungrouped
+          Object.entries(productsStep).forEach(([rangeName, productCodes]: [string, any]) => {
+            (productCodes as string[]).forEach((code: string) => {
               const productDetails = data.stepperForm.steps[3].productDetails?.[code];
               productsList.push({
                 id: generateId(code),
@@ -594,10 +607,35 @@ export const useDataBuilderStore = create<DataBuilderState>()(
             groupToRanges[groupId] = (rangeNames as string[]).map((name) => generateId(name));
           });
 
+          // Build rangeToProducts - map products back to ranges, fixing ungrouped products
           const rangeToProducts: Record<string, string[]> = {};
-          Object.entries(data.stepperForm.steps[2].products || {}).forEach(([rangeName, productCodes]: [string, any]) => {
-            const rangeId = generateId(rangeName);
-            rangeToProducts[rangeId] = (productCodes as string[]).map((code) => generateId(code));
+          Object.entries(productsStep).forEach(([rangeName, productCodes]: [string, any]) => {
+            // Skip ungrouped keys
+            if (!rangeName || rangeName === '' || rangeName === 'undefined') {
+              // Try to find where ungrouped products actually belong
+              (productCodes as string[]).forEach((code: string) => {
+                // Search for this product code in other ranges
+                let found = false;
+                Object.entries(productsStep).forEach(([otherRangeName, otherProductCodes]: [string, any]) => {
+                  if (otherRangeName && otherRangeName !== '' && otherRangeName !== 'undefined') {
+                    if ((otherProductCodes as string[]).includes(code)) {
+                      const rangeId = generateId(otherRangeName);
+                      if (!rangeToProducts[rangeId]) {
+                        rangeToProducts[rangeId] = [];
+                      }
+                      if (!rangeToProducts[rangeId].includes(generateId(code))) {
+                        rangeToProducts[rangeId].push(generateId(code));
+                      }
+                      found = true;
+                    }
+                  }
+                });
+              });
+            } else {
+              // Normal range entry
+              const rangeId = generateId(rangeName);
+              rangeToProducts[rangeId] = (productCodes as string[]).map((code) => generateId(code));
+            }
           });
 
           draft.relationships = {

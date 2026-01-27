@@ -5,9 +5,17 @@ class FrontendInit {
 
 	public function __construct() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_public_scripts' ) );
-		// add_action( 'wp_enqueue_scripts', array( $this, 'register_public_scripts' ) );
 		add_shortcode( 'urbana_product_stepper', array( $this, 'render_stepper_shortcode' ) );
 		add_action( 'wp_footer', array( $this, 'add_stepper_root_div' ) );
+	}
+
+	/**
+	 * Get initialization script that sets up module context before loading ES modules.
+	 * This provides Vite's dynamic import resolver with proper base paths and ensures
+	 * WordPress polyfills are in place.
+	 */
+	private function get_module_init_script() {
+		return "(function(){try{const currentScript=document.currentScript||Array.from(document.scripts).pop();if(currentScript&&currentScript.src){const scriptUrl=new URL(currentScript.src,window.location.href);const distDir=scriptUrl.pathname.replace(/[^\\/]*\\.js$/,'');window.urbanaModuleBase=distDir;window.urbanaModuleContext={baseUrl:scriptUrl.href,distPath:distDir,timestamp:Date.now()}}}catch(e){console.warn('[Urbana] failed to set module context',e)}try{if(window.wp&&window.wp.element){if(typeof window.wp.element.createPortal!=='function'){window.wp.element.createPortal=function(children,container){return children};console.warn('[Urbana] wp.element.createPortal polyfilled (no-op)')}}}catch(e){console.warn('[Urbana] createPortal check failed',e)}})();";
 	}
 
 	public function enqueue_public_scripts() {
@@ -23,33 +31,8 @@ class FrontendInit {
 		$asset_file = URBANA_PLUGIN_PATH . 'assets/dist/';
 
 		if ( file_exists( $asset_file . 'stepper-app.js' ) ) {
-			wp_enqueue_script(
-				'urbana-stepper-app',
-				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.js',
-				array( 'wp-element' ),
-				URBANA_VERSION,
-				true
-			);
-
-			// Add module type attribute
-			add_filter(
-				'script_loader_tag',
-				function ( $tag, $handle ) {
-					if ( 'urbana-stepper-app' === $handle ) {
-						return str_replace( '<script', '<script type="module"', $tag );
-					}
-					return $tag;
-				},
-				10,
-				2
-			);
-
-			wp_enqueue_style(
-				'urbana-stepper-app',
-				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.css',
-				array(),
-				URBANA_VERSION
-			);
+			// Ensure wp-element is loaded BEFORE the module
+			wp_enqueue_script( 'wp-element' );
 
 			// Get product data and data builder information from database
 			$db_manager   = new \Urbana\Database\DatabaseManager();
@@ -110,18 +93,59 @@ class FrontendInit {
 				}
 			}
 
-			// Localize script for API calls and data
-			wp_localize_script(
-				'urbana-stepper-app',
-				'urbanaPublic',
-				array(
-					'apiUrl'      => rest_url( 'urbana/v1/' ),
-					'nonce'       => wp_create_nonce( 'wp_rest' ),
-					'productData' => $product_data,
-					'stepperId'   => $id,
-					'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
-				)
+			// Add data to window BEFORE the module loads so it can access window.urbanaPublic
+			// Use wp_add_inline_script with 'after' position, without module attribute
+			$urbana_data = array(
+				'apiUrl'      => rest_url( 'urbana/v1/' ),
+				'nonce'       => wp_create_nonce( 'wp_rest' ),
+				'productData' => $product_data,
+				'stepperId'   => $id,
+				'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
 			);
+			
+			// Add non-module script to set window.urbanaPublic BEFORE module loads
+			wp_enqueue_script(
+				'urbana-stepper-data',
+				false,
+				array( 'wp-element' ),
+				URBANA_VERSION
+			);
+			wp_add_inline_script(
+				'urbana-stepper-data',
+				'window.urbanaPublic = ' . wp_json_encode( $urbana_data ) . ';'
+			);
+
+			// Enqueue the stepper app as a module
+			wp_enqueue_script(
+				'urbana-stepper-app',
+				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.js',
+				array( 'urbana-stepper-data' ),  // Depends on data being set first
+				URBANA_VERSION,
+				true
+			);
+
+			// Add module type attribute
+			add_filter(
+				'script_loader_tag',
+				function ( $tag, $handle ) {
+					if ( 'urbana-stepper-app' === $handle ) {
+						return str_replace( '<script', '<script type="module"', $tag );
+					}
+					return $tag;
+				},
+				10,
+				2
+			);
+
+			wp_enqueue_style(
+				'urbana-stepper-app',
+				URBANA_PLUGIN_URL . 'assets/dist/stepper-app.css',
+				array(),
+				URBANA_VERSION
+			);
+
+			// Provide module context before module loads
+			wp_add_inline_script( 'urbana-stepper-app', $this->get_module_init_script(), 'before' );
 		}
 	}
 

@@ -24,15 +24,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
-      // Ensure specific subpath is matched before the broader 'react' alias to avoid fallback resolution
-      'react/jsx-runtime': resolve(__dirname, 'src/shims/react-jsx-runtime.ts'),
-      // Shims to ensure admin bundles use WordPress' React instance (wp.element)
-      // This avoids duplicate React instances and fixes useContext null errors from icon libraries.
-      react: resolve(__dirname, 'src/shims/react-shim.ts'),
-      'react-dom/client': resolve(__dirname, 'src/shims/react-dom-shim.ts'),
-      'react-dom': resolve(__dirname, 'src/shims/react-dom-shim.ts'),
+      "react/jsx-runtime": resolve(__dirname, "src/shims/react-jsx-runtime.ts"),
+      react: resolve(__dirname, "src/shims/react-shim.ts"),
+      "react-dom/client": resolve(__dirname, "src/shims/react-dom-shim.ts"),
+      "react-dom": resolve(__dirname, "src/shims/react-dom-shim.ts"),
     },
   },
-  // Use absolute path that works in WordPress admin context
-  base: "/wp-content/plugins/urbana-selector-master/assets/dist/",
+  base: "./",
 });
